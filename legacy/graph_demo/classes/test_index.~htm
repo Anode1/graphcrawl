@@ -1,0 +1,87 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type"
+content="text/html; charset=iso-8859-1">
+<meta name="GENERATOR" content="Microsoft FrontPage Express 2.0">
+<title></title>
+</head>
+
+<applet
+code="NavigatorApplet.class"
+align="baseline" width=500 height=500
+>
+
+<param name="cgi" value="http://127.0.0.1/servlets/graph.main">
+<param name="first_node" value="0">
+<param name="static_version" value="false">
+<param name="iconFromX" value="30">
+<param name="iconFromY" value="400">
+<param name="wid" value="1">
+<param name="themeId" value="1">
+
+<param name="ovals_min_id" value="-600">
+<param name="ovals_max_id" value="-214">
+
+<param name="category_icon_1" value="minus.gif">
+<param name="category_icon_2" value="exclaim.gif">
+<param name="category_icon_3" value="external.gif">
+<param name="category_icon_4" value="plus.gif">
+<param name="category_icon_5" value="query.gif">
+
+<param name="number_of_frames_in_anim" value="2">
+<param name="file_1" value="server1.gif">
+<param name="file_2" value="server2.gif">
+
+<param name=line_0  value='0;Main portal;0;http://www.yahoo.com;-300,2,63,24,40,41,42;'>
+<param name=line_1  value='-300;some host;1;http://www.telepres.com;59,60,61,62,63,64,65,66,67,68,69;0'>
+<param name=line_2  value='2;Java;2;http://www.java.sun.com;-500,7,8,55,56,57,58;0'>
+<param name=line_3  value='-500;Oracle;3;http://www.oracle.com;47,48,49,50;2'>
+<param name=line_4  value='7;Linux (no page here);4;;21,22,23,34,35,36;2'>
+<param name=line_5  value='8;This is an example of not so very long label having image;5;http://www.sun.com;12,13,14,15,16,17,18,19,20;2'>
+<param name=line_6  value='21;IBM XML;;http://www.ibm.com/xml;24,25,26,27;7'>
+<param name=line_7  value='22;IBM Java site;;http://www.ibm.com/java;28,29,30;7'>
+<param name=line_8  value='23;Soft link example;;http://sun.com;31,32,33,2;7'>
+<param name=line_9  value='34;HELUIM;;http://205.189.243.130;37,38,39,40;7'>
+<param name=line_10  value='35;Nodes could be editable if CGI or servlet is used;;http://www.borland.com;41,42,43;7'>
+<param name=line_11  value='36;Apache;;http://www.apache.org;44,45,46;7'>
+<param name=line_12  value='12;Corba;;http://www.omg.org;;8'>
+<param name=line_13  value='13;If Microsoft was made Lego it would make square pips;;http://www.microsoft.com;;8'>
+<param name=line_14  value='14;This is a demo of escape characters usage: here you can see columns: aaa\;ss\; ;;http://www.sun.com/solaris;;8'>
+<param name=line_15  value='15;Solaris is very stable platform for the backend, but Linux is free;;http://www.objectstore.com;;8'>
+<param name=line_16  value='11;DEVELOPMENT PROCESS;;http://www.objectspace.com;;8'>
+<param name=line_17  value='24;dummy data: 1 2 3 4 5 6 7 8 9 10 11 22 33 55 66 77 88 99 111 222 333 444 555 666 7777 88888 999999 1010101010;;http://www-uk.hlp.hp.com/people/ak/java/nexus;12,13,14;0'>
+<param name=line_18  value='59;some link;;http://www.java.sun.com/products/servlets;41,42,43;-300'>
+<param name=line_19  value='60;some another link;;http://www.sun.com/products-n-solutions/edu/java/;44,45,46,59;-300'>
+<param name=line_20  value='61;another link;;http://developer.netscape.com/tech/javascript/ssjs/ssjs.html;;-300'>
+<param name=line_21  value='62;etc...;;http://www.livesoftware.com;41,42,43;-300'>
+<param name=line_22  value='63;gnu;;http://www.unicom.net;44,45,46;-300'>
+<param name=line_23  value='64;JINI;;http://www.paralogic.com/webcore;;-300'>
+<param name=line_24  value='65;JIT;;http://www.netscape.com;41,42,43;-300'>
+<param name=line_25  value='66;some garbage;;http://www.telepres.com;44,45,46,59;-300'>
+<param name=line_26  value='67;terminal (no other links from there);;http://jserv.java.sun.com/products/java-server/servlets/environments.html;;-300'>
+<param name=line_27  value='68;free BSD;;http://java.sun.com/products;44,45,46,47,48,49,50,51,52,53,54,55,56,57,58;-300'>
+<param name=line_28  value='69;blackdown;;http://www.klg.com;;-300'>
+<param name=line_29  value='40;your server;;http://localhost;41,42,34,43;0'>
+<param name=line_30  value='41;your server on 8080;;http://localhost:8080;44,45,46,59;0'>
+<param name=line_31  value='42;your secure server;;http://localhost:443;23;0'>
+<param name=line_32  value='44;/bin;;http://www.redhat.com;112,123,233;68'>
+<param name=line_33  value='45;/dev;;http://www.redhat.com/hardware;234,23,2345,345;68'>
+<param name=line_34  value='46;/etc;;http://metalab.unc.edu;;68'>
+<param name=line_35  value='47;/lib;;http://metalab.unc.edu/linux/intro.html;451,442,43;68'>
+<param name=line_36  value='48;/proc;;http://archive.redhat.com;434,445,456;68'>
+<param name=line_37  value='49;/tmp;;http://www.xfree86.org;;68'>
+<param name=line_38  value='50;/usr;;http://www.oreilly.com;451,452,453;68'>
+<param name=line_39  value='51;/usr/Xalfa;;http://www.mesa3d.org;454,455,46,559;68'>
+<param name=line_40  value='52;/usr/bin;;http://glide.xxedgexx.com;;68'>
+<param name=line_41  value='53;/usr/g++-include;;http://www.wiley.com/compbooks;434,445,466,467,468,469,660,561,562,563,564,655,566,567,568;68'>
+<param name=line_42  value='54;/usr/local;;http://gtekil.com;;68'>
+<param name=line_43  value='55;/usr/man;;http://www.org.omg;464,465,466,569;68'>
+<param name=line_44  value='56;/var;;http://www.fintronic.com;;68'>
+<param name=line_45  value='57;/usr/src;;http://www.infomagic.com;464,455,466,467,468,469,566,561,562,563,564,565,566,567,568;68'>
+<param name=line_46  value='58;/var/spool;;http://www.lasermoon.co.uk;;68'>
+<param name=line_47  value='43;RMI-IIOP;;http://www.morse.net;263;0'>
+
+</applet>
+</body>
+</html>

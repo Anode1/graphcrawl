@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>graphcrawl demo</title>
+<link rel="stylesheet" href="graphcrawl.css">
+
+<!-- alesh.html of 2000-01-03: the family tree carried in the parameters, no
+     server. The one second delay is the 1999 simulated network. Each line
+     lists the node's children and its parents, as the server sends them. -->
+<div id="applet">
+  <canvas id="graph"></canvas>
+  <div id="tools">
+    <label>Tree Depth <select id="depth"><option>2</option><option>3</option></select></label>
+    <label>History <select id="history"></select></label>
+    <span id="hint">double-click a node to crawl to it, drag to move, hover for the full label</span>
+  </div>
+  <div id="status"></div>
+</div>
+<iframe name="content" src="about:blank"></iframe>
+
+<script>
+window.GRAPHCRAWL_PARAMS = {
+  first_node: "0",
+  static_version: "false",
+  delay_ms: "1000",
+  iconFromX: "30",
+  iconFromY: "30",
+  ovals_min_id: "-600",
+  ovals_max_id: "-214",
+  category_icon_1: "minus.gif",
+  category_icon_2: "exclaim.gif",
+  category_icon_3: "external.gif",
+  category_icon_4: "plus.gif",
+  category_icon_5: "query.gif",
+  number_of_frames_in_anim: "2",
+  file_1: "server1.gif",
+  file_2: "server2.gif",
+  line_0:  "0;Anode;0;;;1,2",
+  line_1:  "1;father;0;;0;3,4",
+  line_2:  "2;mother;0;;0;5,6",
+  line_3:  "3;grandmother(father);0;;1;7,8",
+  line_4:  "4;grandfather(father);0;;1;9,10",
+  line_5:  "5;grandmother(mother);0;;2;11,12",
+  line_6:  "6;grandfather(mother);4;;2;13,14",
+  line_7:  "7;grandgrandfather1;1;;3;15,16",
+  line_8:  "8;grandgrandmother2;2;;3;17,18",
+  line_9:  "9;grandgrandfather3;3;;4;19,20",
+  line_10: "10;grandgrandmother4;3;;4;21,22",
+  line_11: "11;grandgrandfather5;4;;5;23,24",
+  line_12: "12;grandgrandmother5;4;;5;25,26",
+  line_13: "13;grandgrandfather6;4;;6;27,28",
+  line_14: "14;grandgrandmother6;4;;6;29,30",
+  line_15: "15;grandgrandfather7;4;;7;31,32"
+};
+</script>
+<script src="graphcrawl.js"></script>
+</html>

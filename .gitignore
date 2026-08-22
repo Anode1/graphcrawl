@@ -1,0 +1,11 @@
+# build artifacts; c/web.c is generated from web/ by make
+*.o
+*.d
+/graphcrawl
+/c/graphcrawl
+/c/graphcrawl_ut
+/c/graphcrawl_ut_asan
+/c/web.c
+/util/mkgraph
+/example/big.txt
+Thumbs.db

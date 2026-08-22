@@ -1,0 +1,59 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type"
+content="text/html; charset=iso-8859-1">
+<meta name="GENERATOR" content="Microsoft FrontPage Express 2.0">
+<title></title>
+</head>
+
+<applet
+code="NavigatorApplet.class"
+align="baseline" width=700 height=500
+>
+
+<param name="cgi" value="http://127.0.0.1/servlets/graph.main">
+<param name="first_node" value="0">
+<param name="static_version" value="false">
+<param name="iconFromX" value="30">
+<param name="iconFromY" value="400">
+<param name="wid" value="1">
+<param name="themeId" value="1">
+
+<param name="ovals_min_id" value="-600">
+<param name="ovals_max_id" value="-214">
+
+<param name="category_icon_1" value="minus.gif">
+<param name="category_icon_2" value="exclaim.gif">
+<param name="category_icon_3" value="external.gif">
+<param name="category_icon_4" value="plus.gif">
+<param name="category_icon_5" value="query.gif">
+
+<param name="number_of_frames_in_anim" value="2">
+<param name="file_1" value="server1.gif">
+<param name="file_2" value="server2.gif">
+
+<param name=line_0  value='0;myself;1;2;3;1'>
+<param name=line_1  value='1;father;;;;2'>
+<param name=line_2  value='2;mother;;5,6;2'>
+<param name=line_3  value='3;grandmother(father);3;;7,8;2'>
+<param name=line_4  value='4;grandfather(father);4;;9,10;2'>
+<param name=line_5  value='5;grandmother(mother);3;;11,12;2'>
+<param name=line_6  value='6;grandfather(mother);4;;13,14;2'>
+<param name=line_7  value='7;grandgrandfather1;4;;15,16;2'>
+<param name=line_8  value='8;grandgrandmother2;4;;17,18;2'>
+<param name=line_9  value='9;grandgrandfather3;4;;19,20;2'>
+<param name=line_10  value='10;grandgrandmother4;4;;21,22;2'>
+<param name=line_11  value='11;grandgrandfather5;4;;23,240;2'>
+<param name=line_12  value='12;grandgrandmother5;4;;25,26;2'>
+<param name=line_13  value='13;grandgrandfather6;4;;27,28;2'>
+<param name=line_14  value='14;grandgrandmother6;4;;29,30;2'>
+<param name=line_15  value='15;grandgrandfather7;4;;31,32;2'>
+
+
+
+
+
+</applet>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>graphcrawl</title>
+<link rel="stylesheet" href="graphcrawl.css">
+
+<!-- frames.html of 1999: the applet on the left, the "content" frame on the
+     right where a node's URL opens -->
+<div id="applet">
+  <canvas id="graph"></canvas>
+  <div id="tools">
+    <label>Tree Depth <select id="depth"><option>2</option><option>3</option></select></label>
+    <label>History <select id="history"></select></label>
+    <span id="hint">double-click a node to crawl to it, drag to move, hover for the full label, shift+double-click keeps the content frame</span>
+  </div>
+  <div id="status"></div>
+</div>
+<iframe name="content" src="about:blank"></iframe>
+
+<script>
+/* the <param> block of 1999. first_node comes from #id in the URL or from
+ * /api/info when absent. */
+window.GRAPHCRAWL_PARAMS = {
+  cgi: "/api/node",
+  static_version: "false",
+  iconFromX: "30",
+  iconFromY: "30",
+  ovals_min_id: "-600",
+  ovals_max_id: "-214",
+  category_icon_1: "minus.gif",
+  category_icon_2: "exclaim.gif",
+  category_icon_3: "external.gif",
+  category_icon_4: "plus.gif",
+  category_icon_5: "query.gif",
+  number_of_frames_in_anim: "2",
+  file_1: "server1.gif",
+  file_2: "server2.gif"
+};
+</script>
+<script src="graphcrawl.js"></script>
+</html>

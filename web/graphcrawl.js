@@ -1,0 +1,1286 @@
+/* graphcrawl.js -- the 1999 NavigatorApplet (Java 1.0, AWT) on the browser
+ * canvas. One section per original class, same names, same integer
+ * arithmetic where Java had ints, so positions, angles and timings come out
+ * the same: 100 ms motor, 30 px per tick toward the centre, 120 px edges,
+ * 120 degree sectors, 300 ms double click. doc/PORT.md maps the classes and
+ * lists the deviations.
+ *
+ * Copyright (C) 1999, 2026 Vasili Gavrilov. GNU GPL v2 or later.
+ */
+'use strict';
+
+/* java.awt.Color names the applet used */
+const Color = {
+  white: '#ffffff', black: '#000000', cyan: '#00ffff', green: '#00ff00',
+  yellow: '#ffff00', gray: '#808080', blue: '#0000ff', lightGray: '#c0c0c0'
+};
+
+/* java.awt.Rectangle: what Sprite and the stop bounds use of it */
+class Rect {
+  constructor(x, y, w, h) { this.x = x; this.y = y; this.width = w; this.height = h; }
+  contains(px, py) {
+    return px >= this.x && py >= this.y && px < this.x + this.width && py < this.y + this.height;
+  }
+  add(px, py) {                                    /* Rectangle.add(Point) */
+    const x1 = Math.min(this.x, px), y1 = Math.min(this.y, py);
+    const x2 = Math.max(this.x + this.width, px), y2 = Math.max(this.y + this.height, py);
+    this.x = x1; this.y = y1; this.width = x2 - x1; this.height = y2 - y1;
+  }
+}
+
+/* java.awt.Graphics over a 2d context: the calls the applet made, with AWT's
+ * pixel conventions (a drawRect outlines w+1 x h+1 pixels; a line is one
+ * pixel wide on pixel centres). Font metrics mimic Dialog 12 plain. */
+class Graphics {
+  constructor(ctx) {
+    this.ctx = ctx;
+    ctx.font = '12px sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.lineWidth = 1;
+    this.fm = { height: 15, descent: 3, stringWidth: (s) => Math.ceil(ctx.measureText(s).width) };
+    this.setColor(Color.black);
+  }
+  getFontMetrics() { return this.fm; }
+  setColor(c) { this.color = c; this.ctx.fillStyle = c; this.ctx.strokeStyle = c; }
+  getColor() { return this.color; }
+  fillRect(x, y, w, h) { this.ctx.fillRect(x, y, w, h); }
+  drawRect(x, y, w, h) { this.ctx.strokeRect(x + 0.5, y + 0.5, w, h); }
+  fillOval(x, y, w, h) {
+    const c = this.ctx;
+    c.beginPath(); c.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, 2 * Math.PI); c.fill();
+  }
+  drawOval(x, y, w, h) {
+    const c = this.ctx;
+    c.beginPath(); c.ellipse(x + 0.5 + w / 2, y + 0.5 + h / 2, w / 2, h / 2, 0, 0, 2 * Math.PI); c.stroke();
+  }
+  drawLine(x0, y0, x1, y1) {
+    const c = this.ctx;
+    c.beginPath(); c.moveTo(x0 + 0.5, y0 + 0.5); c.lineTo(x1 + 0.5, y1 + 0.5); c.stroke();
+  }
+  drawString(s, x, y) { this.ctx.fillText(s, x, y); }
+  drawImage(img, x, y) { if (img) this.ctx.drawImage(img, x, y); }
+  fillPolygon(xs, ys, n) {
+    const c = this.ctx;
+    c.beginPath(); c.moveTo(xs[0], ys[0]);
+    for (let i = 1; i < n; i++) c.lineTo(xs[i], ys[i]);
+    c.closePath(); c.fill();
+  }
+}
+
+/* ---- graph/AngleMath.java: degree tables at 1 degree resolution. The
+ * tables are replaced by the functions they cached; the argument handling
+ * (integer degrees, the atan2 halving loop) is kept, since it shapes the
+ * picture. ---- */
+const AngleMath = {
+  DEG_TO_RAD: (2.0 * Math.PI) / 360.0,
+  RAD_TO_DEG: 360.0 / (2.0 * Math.PI),
+  TABLE_SIZE: 360,
+  cos(degree) {
+    if (degree >= 360) degree = degree % 360;
+    else if (degree < 0) degree = (-degree) % 360;
+    return Math.cos(this.DEG_TO_RAD * degree);
+  },
+  sin(degree) {
+    if (degree >= 360) degree = degree % 360;
+    else if (degree < 0) {
+      degree = (-degree) % 360;
+      return -Math.sin(this.DEG_TO_RAD * degree);
+    }
+    return Math.sin(this.DEG_TO_RAD * degree);
+  },
+  /* atan_table[v1x+180][v1y+180] = atan2(v1x, v1y) in degrees 0..360, after
+   * halving both arguments into the table's range (integer division). */
+  atan2(v1x, v1y) {
+    while (Math.abs(v1x) >= this.TABLE_SIZE / 2 || Math.abs(v1y) >= this.TABLE_SIZE / 2) {
+      v1x = Math.trunc(v1x / 2);
+      v1y = Math.trunc(v1y / 2);
+    }
+    let t = Math.atan2(v1x, v1y) * this.RAD_TO_DEG;
+    if (t < 0.0) t += 360.0;
+    return t;
+  }
+};
+
+/* ---- graph/GrayFilter.java: the per-pixel RGB transform, applied once per
+ * icon to an offscreen canvas (FilteredImageSource) ---- */
+const GrayFilter = {
+  filterRGB(rgb) {
+    const r = Math.floor(((rgb & 0xff0000) + 0x018000) / 3) & 0xff0000;
+    const g = Math.floor(((rgb & 0x00ff00) + 0x018000) / 3) & 0x00ff00;
+    const b = Math.floor(((rgb & 0x0000ff) + 0x000180) / 3) & 0x0000ff;
+    return r | g | b;
+  },
+  apply(img) {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      const o = this.filterRGB((p[i] << 16) | (p[i + 1] << 8) | p[i + 2]);
+      p[i] = (o >> 16) & 0xff; p[i + 1] = (o >> 8) & 0xff; p[i + 2] = o & 0xff;
+    }
+    x.putImageData(d, 0, 0);
+    return c;
+  }
+};
+
+/* ---- graph/ArriveEvent.java ---- */
+class ArriveEvent {
+  constructor(node) { this.source = node; }
+  getSource() { return this.source; }
+}
+
+/* ---- graph/Sprite.java: a rectangle with velocity, shape, image, stop
+ * bounds and listeners ---- */
+class Sprite {
+  constructor(panel) {
+    this.panel = panel;
+    this.x = 0; this.y = 0;
+    this.width = 5; this.height = 5;                /* for debugging purposes */
+    this.v = { x: 0, y: 0 };
+    this.stopBounds = null;
+    this.listeners = [];
+    this.draggable = true;
+    this.type = Sprite.RECTANGLE;
+    this.image = null; this.grayedImage = null;
+    this.imageWidth = 0; this.imageHeight = 0;
+    this.color = Color.cyan;
+    this.borderColor = Color.gray;
+    this.oldx = 0; this.oldy = 0;
+  }
+  setType(t) { this.type = t; }
+  getType() { return this.type; }
+  setColor(c) { this.color = c; }
+  getColor() { return this.color; }
+  setV(vx, vy) {
+    if (typeof vx === 'object') { this.v.x = vx.x; this.v.y = vx.y; }
+    else { this.v.x = vx; this.v.y = vy; }
+  }
+  getMiddleX() { return this.x + (this.width >> 1); }
+  getMiddleY() { return this.y + (this.height >> 1); }
+  inside(X, Y) { return X >= this.x && Y >= this.y && X < this.x + this.width && Y < this.y + this.height; }
+  getCenter() { return { x: this.getMiddleX(), y: this.getMiddleY() }; }
+  setCenter(cx, cy) { this.x = cx - (this.width >> 1); this.y = cy - (this.height >> 1); }
+  setDraggable(b) { this.draggable = b; }
+  isDraggable() { return this.draggable; }
+  setImage(image) {
+    this.image = image;
+    this.grayedImage = GrayFilter.apply(image);
+    this.imageWidth = image.width; this.imageHeight = image.height;
+    this.width = this.imageWidth; this.height = this.imageHeight;
+  }
+  /* walk around the situation when the rectangle has width or height 0 */
+  setStopBounds(r) {
+    this.stopBounds = r;
+    if (r != null) { r.x -= 1; r.y -= 1; r.width += 2; r.height += 2; }
+  }
+  getStopBounds() { return this.stopBounds; }
+  paintShaded(g) { this.paintSprite(g, true); }
+  paint(g) { this.paintSprite(g, false); }
+  paintSprite(g, shaded) {
+    const ind = Sprite.indent;
+    if (this.image == null) {
+      const defaultColor = g.getColor();
+      g.setColor(this.color);
+      if (this.type === Sprite.RECTANGLE) {
+        g.fillRect(this.x - ind, this.y, this.width + ind + ind, this.height);
+        g.setColor(this.borderColor);
+        g.drawRect(this.x - ind, this.y, this.width + ind + ind, this.height);
+      } else {
+        g.fillOval(this.x - 1 - ind, this.y, this.width + ind + ind + 2, this.height);
+        g.setColor(this.borderColor);
+        g.drawOval(this.x - 1 - ind, this.y, this.width + ind + ind + 2, this.height);
+      }
+      g.setColor(defaultColor);
+    } else {
+      const prevColor = g.getColor();
+      g.setColor(Color.white);
+      g.fillRect(this.x, this.y, this.imageWidth, this.imageHeight);   /* white background for icon */
+      g.setColor(prevColor);
+      g.drawImage(shaded ? this.grayedImage : this.image, this.x, this.y);
+    }
+  }
+  /* move by the velocity, reflecting off the panel's edges */
+  update() {
+    const ind = Sprite.indent, size = this.panel.size();
+    let temp = ind;
+    this.x += this.v.x;
+    if (this.x < temp) { this.x = temp; this.v.x = -this.v.x; }
+    temp = size.width - this.width - ind - ind + 1;
+    if (this.x > temp) { this.x = temp; this.v.x = -this.v.x; }
+    temp = ind;
+    this.y += this.v.y;
+    if (this.y < temp) { this.y = temp; this.v.y = -this.v.y; }
+    temp = size.height - this.height - ind - ind + 1;
+    if (this.y > temp) { this.y = temp; this.v.y = -this.v.y; }
+  }
+}
+Sprite.OVAL = 0;
+Sprite.RECTANGLE = 1;
+Sprite.indent = 2;
+
+/* ---- graph/WrappedLabel.java: the long label shown under the cursor ---- */
+class WrappedLabel {
+  constructor(panel, string) {
+    this.panel = panel; this.string = string;
+    this.x0 = 0; this.y0 = 0;
+    this.width = 5; this.height = WrappedLabel.row_height;
+    this.fm = null; this.shortLabelWidth = 0; this.descent = 0;
+    this.dynamic = false;
+    this.strings = null; this.x = null; this.y = null;
+    this.bgColor = Color.white;
+  }
+  getWidth() { return this.width; }
+  getHeight() { return this.height; }
+  setBGColor(c) { this.bgColor = c; }
+  isInitialized() { return this.fm != null; }
+  init(fm, row_height, descent, shortLabelWidth) {
+    this.fm = fm;
+    WrappedLabel.row_height = row_height;
+    this.descent = descent;
+    this.shortLabelWidth = shortLabelWidth;
+    const longLabelWidth = fm.stringWidth(this.string);
+    if (longLabelWidth > shortLabelWidth) {
+      this.dynamic = true;
+    } else {
+      this.dynamic = false;
+      this.height = row_height;
+      this.width = longLabelWidth;
+    }
+  }
+  /* divide the string into lines and place them; called when the node moves */
+  reset(x0, y0) {
+    const indent = WrappedLabel.indent, row_height = WrappedLabel.row_height;
+    this.x0 = x0 >= indent ? x0 : indent;
+    this.y0 = y0;
+    const rightBorder = this.panel.size().width;
+    if (!this.dynamic) {
+      if (this.x0 > rightBorder - this.width - indent - indent + 1)
+        this.x0 = rightBorder - this.width - indent - indent + 1;
+      return;
+    }
+    const words = this.string.split(/\s+/).filter((w) => w.length > 0);
+    const numWords = words.length;
+    const maxWidth = rightBorder - this.shortLabelWidth - indent - indent;
+    const strings = [];
+    let curLine = '';
+    for (let i = 0; i < numWords;) {
+      while (this.fm.stringWidth(curLine) <= maxWidth) {
+        curLine += words[i] + ' ';
+        i++;
+        if (i === numWords) break;
+      }
+      strings.push(curLine);
+      curLine = '';
+    }
+    this.strings = strings;
+    this.x = new Array(strings.length);
+    this.y = new Array(strings.length);
+    this.width = 0; this.height = 0;
+    for (let i = 0; i < strings.length; i++) {
+      const w = this.fm.stringWidth(strings[i]);
+      if (w > this.width) this.width = w;
+      this.height += row_height;
+      this.x[i] = this.x0;
+      this.y[i] = y0 + i * row_height + row_height - this.descent;
+    }
+    if (this.x0 > rightBorder - this.width - indent - indent + 1) {
+      this.x0 = rightBorder - this.width - indent - indent + 1;
+      for (let i = 0; i < strings.length; i++) this.x[i] = this.x0;
+    }
+  }
+  paint(g) {
+    const indent = WrappedLabel.indent, row_height = WrappedLabel.row_height;
+    const prevColor = g.getColor();
+    if (this.bgColor != null) g.setColor(this.bgColor);
+    g.fillRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height);
+    g.setColor(Color.black);
+    g.drawRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height);
+    g.setColor(prevColor);
+    if (this.dynamic) {
+      for (let i = 0; i < this.strings.length; i++) g.drawString(this.strings[i], this.x[i], this.y[i]);
+    } else {
+      g.drawString(this.string, this.x0, this.y0 + row_height - this.descent);
+    }
+  }
+}
+WrappedLabel.row_height = 5;
+WrappedLabel.indent = 2;
+
+/* ---- graph/NodeView.java: the visible node ---- */
+class NodeView extends Sprite {
+  constructor(panel, nodeModel) {
+    super(panel);
+    this.nodeModel = nodeModel;
+    this.fromAngle = 0;
+    this.toAngle = 360;
+    this.wrappedLabel = null;
+    this.showLongLabel = false;
+    this.expanded = false;
+    this.visited = false;
+    this.notHighligtedColor = NodeView.TERMINAL_COLOR;
+    this.needReset = true;
+    this.shortLabelWidth = -1;
+    this.descent = -1;
+    this.fm = null;
+    this.highlighted = false;
+    this.terminal = true;
+    const label = nodeModel.label;
+    this.shortLabel = label.length > NodeView.labelViewLength
+      ? label.substring(0, NodeView.labelViewLength - 4) + '...' : label;
+    const categories = Categories.getInstance();
+    const iconImage = categories.getImageForCategory(nodeModel.category);
+    if (iconImage == null) {
+      if (categories.isInOvalRange(nodeModel.id)) this.type = Sprite.OVAL;
+    } else {
+      this.setImage(iconImage);
+    }
+  }
+  setLongLabel(b) { this.showLongLabel = b; }
+  setHighlighted(h) {
+    this.highlighted = h;
+    this.color = h ? NodeView.HIGHLIGHTED_COLOR : this.notHighligtedColor;
+  }
+  isHighlighted() { return this.highlighted; }
+  setUsualColor(c) { this.notHighligtedColor = c; }
+  getUsualColor() { return this.notHighligtedColor; }
+  isTerminal() { return this.terminal; }
+  setTerminal(t) {
+    this.terminal = t;
+    this.notHighligtedColor = t ? NodeView.TERMINAL_COLOR : NodeView.DEFAULT_COLOR;
+  }
+  resetWrappedLabel() { this.needReset = true; }
+  addArriveEventListener(l) { this.listeners.push(l); }
+  removeArriveEventListener(l) {
+    const i = this.listeners.indexOf(l);
+    if (i >= 0) this.listeners.splice(i, 1);
+  }
+  notifyArriveEventListeners(e) { for (const l of this.listeners.slice()) l.onArrive(e); }
+  equals(nodeView) { return nodeView != null && this.nodeModel.equals(nodeView.getNodeModel()); }
+  getNodeModel() { return this.nodeModel; }
+  /* the velocity vector toward a point, and the stop bounds on the way */
+  getVelocity(newPointX, newPointY, velocity) {
+    const oldPointX = this.getMiddleX(), oldPointY = this.getMiddleY();
+    const angleInRad = Math.atan2(newPointY - oldPointY, newPointX - oldPointX);
+    const scaledX = Math.trunc(velocity * Math.cos(angleInRad));
+    const scaledY = Math.trunc(velocity * Math.sin(angleInRad));
+    const newBounds = new Rect(oldPointX, oldPointY, 0, 0);
+    newBounds.add(newPointX, newPointY);
+    this.setStopBounds(newBounds);
+    return { x: scaledX, y: scaledY };
+  }
+  /* dimensions from the font, once the first paint has a Graphics */
+  init(g) {
+    this.fm = g.getFontMetrics();
+    this.descent = this.fm.descent;
+    NodeView.row_height = this.fm.height;
+    this.shortLabelWidth = this.fm.stringWidth(this.shortLabel);
+    const oldMiddleX = this.getMiddleX(), oldMiddleY = this.getMiddleY();
+    if (this.image == null) {
+      this.width = this.shortLabelWidth;
+      this.height = NodeView.row_height;
+      this.x = oldMiddleX - (this.width >> 1);
+      this.y = oldMiddleY - (this.height >> 1);
+    } else {
+      this.x = oldMiddleX - (this.imageWidth >> 1);
+      this.y = oldMiddleY - (this.imageHeight >> 1);
+    }
+  }
+  paint(g) {
+    const defaultColor = g.getColor();
+    g.setColor(this.visited ? NodeView.VISITED_FONT_COLOR : NodeView.DEFAULT_FONT_COLOR);
+    if (this.fm == null) this.init(g);
+    const row_height = NodeView.row_height;
+    let vertShift = 0;
+    if (this.image != null) vertShift = this.imageHeight + NodeView.gapBetweenLabelAndImage;
+    const horTextPos = this.getMiddleX() - (this.shortLabelWidth >> 1);
+    if (this.showLongLabel) {
+      if (this.wrappedLabel == null) {
+        this.wrappedLabel = new WrappedLabel(this.panel, this.nodeModel.label);
+        this.wrappedLabel.setBGColor(Color.white);
+        this.wrappedLabel.init(this.fm, row_height, this.descent, this.shortLabelWidth);
+      }
+      if (this.needReset) {
+        this.wrappedLabel.reset(horTextPos, this.y + vertShift);
+        this.needReset = false;
+      }
+      if (this.image != null) super.paintShaded(g);
+      this.wrappedLabel.paint(g);
+    } else {
+      super.paint(g);
+      if (this.image != null) {
+        const prevColor = g.getColor();
+        g.setColor(Color.white);
+        g.fillRect(horTextPos, this.y + vertShift, this.shortLabelWidth, row_height);
+        g.setColor(prevColor);
+      }
+      g.drawString(this.shortLabel, horTextPos, this.y + vertShift + row_height - this.descent);
+    }
+    g.setColor(defaultColor);
+  }
+  update() {
+    super.update();
+    if (this.stopBounds != null) {
+      if (!this.stopBounds.contains(this.x + (this.width >> 1), this.y + (this.height >> 1)))
+        this.notifyArriveEventListeners(new ArriveEvent(this));
+    }
+  }
+}
+NodeView.labelViewLength = 15;
+NodeView.DEFAULT_COLOR = Color.cyan;
+NodeView.TERMINAL_COLOR = Color.green;
+NodeView.HIGHLIGHTED_COLOR = Color.yellow;
+NodeView.VISITED_FONT_COLOR = Color.blue;
+NodeView.DEFAULT_FONT_COLOR = Color.black;
+NodeView.gapBetweenLabelAndImage = 2;
+NodeView.row_height = -1;
+
+/* ---- graph/Edge.java: a parent edge, with the arrow at its middle ---- */
+class Edge {
+  constructor(fromNode, toNode) { this.fromNode = fromNode; this.toNode = toNode; }
+  getFromNode() { return this.fromNode; }
+  getToNode() { return this.toNode; }
+  equals(another) {
+    return another != null && another.getFromNode().equals(this.fromNode) && another.getToNode().equals(this.toNode);
+  }
+  paint(g) {
+    g.drawLine(this.fromNode.getMiddleX(), this.fromNode.getMiddleY(), this.toNode.getMiddleX(), this.toNode.getMiddleY());
+    const defaultColor = g.getColor();
+    g.setColor(Edge.color);
+    this.drawArrow(g, this.fromNode.getMiddleX(), this.fromNode.getMiddleY(), this.toNode.getMiddleX(), this.toNode.getMiddleY());
+    g.setColor(defaultColor);
+  }
+  drawArrow(g, x0, y0, x, y) {
+    const math = AngleMath;
+    const arrowAngle = 30, arrowLength = 20;
+    const middlePointX = (x0 + x) >> 1, middlePointY = (y0 + y) >> 1;
+    const thisEdgeAngle = Math.trunc(math.atan2(y - y0, x - x0)) + 90;
+    const leftSegmentAngle = thisEdgeAngle - (arrowAngle >> 1);
+    const firstArrowTailX = middlePointX + Math.trunc(arrowLength * math.sin(leftSegmentAngle));
+    const firstArrowTailY = middlePointY - Math.trunc(arrowLength * math.cos(leftSegmentAngle));
+    const rightSegmentAngle = thisEdgeAngle + (arrowAngle >> 1);
+    const secondArrowTailX = middlePointX + Math.trunc(arrowLength * math.sin(rightSegmentAngle));
+    const secondArrowTailY = middlePointY - Math.trunc(arrowLength * math.cos(rightSegmentAngle));
+    g.fillPolygon([middlePointX, firstArrowTailX, secondArrowTailX],
+                  [middlePointY, firstArrowTailY, secondArrowTailY], 3);
+  }
+}
+Edge.color = Color.gray;
+
+/* ---- graph/Motor.java: the repaint thread, 100 ms; suspended, it repaints
+ * twice more and stops ---- */
+class Motor {
+  constructor(component, refreshPeriod) {
+    this.component = component;
+    this.refreshPeriod = refreshPeriod || 100;
+    this.timer = null;
+    this.isSuspended = false;
+    this.counter = 0;
+  }
+  start() { if (this.timer == null) this.timer = setInterval(() => this.run(), this.refreshPeriod); }
+  stop() { if (this.timer != null) { clearInterval(this.timer); this.timer = null; } }
+  resumeThread() { if (this.isSuspended) this.isSuspended = false; }
+  suspendThread() { if (!this.isSuspended) { this.isSuspended = true; this.counter = 0; } }
+  run() {
+    if (this.isSuspended) {
+      this.counter++;
+      if (this.counter < 3) this.component.repaint();
+    } else {
+      this.component.repaint();
+    }
+  }
+}
+
+/* ---- graph/Animation.java: "Connecting to the server..." ---- */
+class Animation {
+  constructor(panel, applet) {
+    this.panel = panel; this.applet = applet;
+    this.counter = 0; this.triples = 0; this.periodLength = 4; this.currentFrame = 0;
+    this.frames = null;
+    this.fromX = 30; this.fromY = 30;
+  }
+  setPanel(panel) { this.panel = panel; }
+  async loadImages() {
+    const applet = this.applet;
+    const fx = applet.getParameter('iconFromX'), fy = applet.getParameter('iconFromY');
+    if (fx != null && !isNaN(parseInt(fx, 10))) this.fromX = parseInt(fx, 10);
+    if (fy != null && !isNaN(parseInt(fy, 10))) this.fromY = parseInt(fy, 10);
+    const numberString = applet.getParameter('number_of_frames_in_anim');
+    if (numberString == null) return;
+    const number = parseInt(numberString, 10);
+    if (isNaN(number)) return;
+    this.frames = new Array(number).fill(null);
+    const loads = [];
+    for (let i = 0; i < number; i++) {
+      const filename = applet.getParameter('file_' + (i + 1));
+      if (filename != null) loads.push(applet.getImage(filename).then((img) => { this.frames[i] = img; }));
+    }
+    await Promise.all(loads);
+  }
+  paint(g, w, h) {
+    this.counter++;
+    if (this.counter % 12 === 0) { this.triples++; this.currentFrame++; }
+    const numberOfPeriods = Math.trunc(((w >> 1) - this.fromX) / this.periodLength);
+    for (let i = 0; i < numberOfPeriods; i++) {
+      const currentPeriod = this.triples % 3;
+      const beg = this.fromX + (i + currentPeriod) * this.periodLength;
+      if (i % 3 === 0) g.drawLine(beg, this.fromY, beg + this.periodLength, this.fromY);
+    }
+    if (this.frames != null && this.frames.length > 0 && this.frames[this.currentFrame % this.frames.length] != null)
+      g.drawImage(this.frames[this.currentFrame % this.frames.length], this.fromX, this.fromY - 32);
+    g.drawString('Connecting to the server...', (w >> 1) + 10, this.fromY);
+  }
+}
+
+/* ---- graph/Categories.java: icons per category, and the id range drawn
+ * as ovals ---- */
+class Categories {
+  constructor(applet) {
+    this.applet = applet;
+    this.catImages = [];
+    Categories.instance = this;
+    const mn = applet.getParameter('ovals_min_id'), mx = applet.getParameter('ovals_max_id');
+    if (mn != null && !isNaN(parseInt(mn, 10))) Categories.OVALS_MIN_ID = parseInt(mn, 10);
+    if (mx != null && !isNaN(parseInt(mx, 10))) Categories.OVALS_MAX_ID = parseInt(mx, 10);
+  }
+  static getInstance() { return Categories.instance; }
+  async loadImages() {
+    const loads = [];
+    this.catImages = new Array(255).fill(null);
+    for (let i = 0; i < 255; i++) {
+      const filename = this.applet.getParameter('category_icon_' + (i + 1));
+      if (filename != null) loads.push(this.applet.getImage(filename).then((img) => { this.catImages[i] = img; }));
+    }
+    await Promise.all(loads);
+  }
+  getImageForCategory(categoryString) {
+    if (!/^-?\d+$/.test(categoryString || '')) return null;
+    const categoryNum = parseInt(categoryString, 10);
+    if (this.catImages == null || this.catImages.length < categoryNum) return null;
+    if (categoryNum <= 0) return null;
+    return this.catImages[categoryNum - 1] || null;
+  }
+  isInOvalRange(stringId) {
+    if (!/^-?\d+$/.test(stringId || '')) return false;
+    const id = parseInt(stringId, 10);
+    return Categories.OVALS_MIN_ID < id && Categories.OVALS_MAX_ID > id;
+  }
+}
+Categories.OVALS_MIN_ID = -1000;
+Categories.OVALS_MAX_ID = 0;
+Categories.instance = null;
+
+/* ---- graph/Node.java: the light node of the cache ---- */
+class Node {
+  constructor(id, label, category, url, children, parents) {
+    this.id = id;
+    this.label = label == null ? '' : label;
+    this.category = category;
+    this.url = url;
+    this.children = children;
+    this.parents = parents;
+  }
+  getID() { return this.id; }
+  getLabel() { return this.label; }
+  getCategory() { return this.category; }
+  getUrl() { return this.url; }
+  getChildrenIds() { return this.children; }
+  getNumChildren() { return this.children.length; }
+  getParentsIds() { return this.parents; }
+  getNumParents() { return this.parents.length; }
+  equals(node) { return node != null && this.id === node.id; }
+  toString() {
+    return this.id + ';' + this.label + ';' + this.category + ';' + this.url + ';' +
+      this.children.join(',') + ';' + this.parents.join(',');
+  }
+}
+
+/* ---- graph/GraphModel.java: the cache, replaced on every request ---- */
+class GraphModel {
+  constructor() { this.map = new Map(); }
+  getNode(key) { return this.map.has(key) ? this.map.get(key) : null; }
+  addNode(key, node) { this.map.set(key, node); }
+  removeNode(key) { const n = this.getNode(key); this.map.delete(key); return n; }
+  toString() {
+    let result = '\r\n';
+    for (const n of this.map.values()) result += n.toString() + '\r\n';
+    return result;
+  }
+}
+
+/* ---- graph/History.java ---- */
+class History {
+  constructor() { this.map = new Map(); }
+  getNode(key) { return this.map.has(key) ? this.map.get(key) : null; }
+  addNode(key, node) { this.map.set(key, node); }
+  keys() { return this.map.keys(); }
+  get(key) { return this.map.get(key); }
+}
+
+/* ---- graph/Parser.java: one line -> one Node, as in 1999 ---- */
+class Parser {
+  constructor() { this.graph = new GraphModel(); this.currentLine = 0; }
+  parseLine(line) {
+    try {
+      this.currentLine++;
+      const children = [], parents = [];
+      let i = line.indexOf(';');
+      if (i < 0) throw new Error('no id separator');
+      const id = line.substring(0, i);
+      const stringWithoutId = line.substring(i + 1);
+      i = stringWithoutId.indexOf(';');
+      let needToRemove = false;
+      while (i > 0 && stringWithoutId.charAt(i - 1) === '\\') {      /* skip "\;" */
+        i = stringWithoutId.indexOf(';', i + 1);
+        needToRemove = true;
+      }
+      if (i < 0) throw new Error('no label separator');
+      let label = stringWithoutId.substring(0, i);
+      if (needToRemove) label = Parser.decode(label);
+      const stringWithoutLabel = stringWithoutId.substring(i + 1);
+      i = stringWithoutLabel.indexOf(';');
+      if (i < 0) throw new Error('no category separator');
+      const category = stringWithoutLabel.substring(0, i);
+      const stringWithoutCategory = stringWithoutLabel.substring(i + 1);
+      i = stringWithoutCategory.indexOf(';');
+      if (i < 0) throw new Error('no url separator');
+      const value = stringWithoutCategory.substring(0, i);
+      const stringWithoutValue = stringWithoutCategory.substring(i + 1);
+      /* the rest may be: ";" "5,8;" "34;" ";4,6" ";3" "12,5;53,76" "1;77" */
+      const indexOfseparator = stringWithoutValue.indexOf(';');
+      if (indexOfseparator > 0) {
+        const childrenString = stringWithoutValue.substring(0, indexOfseparator);
+        for (const t of childrenString.split(',')) {
+          const aChild = t.trim();
+          if (aChild.length > 0) children.push(aChild);
+        }
+      }
+      const parentsString = stringWithoutValue.substring(indexOfseparator + 1).trim();
+      if (parentsString.length > 0) {
+        for (const t of parentsString.split(',')) {
+          const aParent = t.trim();
+          if (aParent.length > 0) parents.push(aParent);
+        }
+      }
+      this.graph.addNode(id, new Node(id, label, category, value, children, parents));
+    } catch (e) {
+      console.log('Parser::error in line ' + this.currentLine + ':' + e + ' the line:' + line);
+    }
+  }
+  getGraphModel() { return this.graph; }
+  /* removes '\' characters (in labels) */
+  static decode(s) { return s.split('\\').join(''); }
+}
+
+/* ---- graph/InfoRequestThread.java: fetch the tree, parse it, hand the
+ * model to the applet and call dataReady. Stopped requests are ignored. ---- */
+class InfoRequest {
+  constructor(applet, parentID, depth, fromAppletParameters) {
+    this.applet = applet; this.parentID = parentID; this.depth = depth;
+    this.fromAppletParameters = fromAppletParameters;
+    this.debug = false;
+    this.alive = false;
+    this.abort = null;
+  }
+  setDebug(d) { this.debug = d; }
+  start() {
+    if (this.alive) return;
+    this.alive = true;
+    if (this.fromAppletParameters) {
+      /* the 1999 debug mode simulated the network with a one second sleep */
+      const delay = parseInt(this.applet.getParameter('delay_ms') || '1000', 10);
+      setTimeout(() => {
+        if (!this.alive) return;
+        this.getFromAppletParameters();
+        this.applet.dataReady(this.parentID);
+      }, delay);
+    } else {
+      this.getFromCGI().then(() => { if (this.alive) this.applet.dataReady(this.parentID); });
+    }
+  }
+  stop() {
+    this.alive = false;
+    if (this.abort) this.abort.abort();
+  }
+  async getFromCGI() {
+    const cgi = this.applet.getParameter('cgi');
+    if (cgi == null) { console.log('There is no cgi parameter specified'); return; }
+    let url = cgi + (cgi.indexOf('?') < 0 ? '?' : '&') + 'keywordid=' + encodeURIComponent(this.parentID);
+    const wid = this.applet.getParameter('wid'), themeId = this.applet.getParameter('themeId');
+    if (wid != null) url += '&wid=' + encodeURIComponent(wid);
+    if (themeId != null) url += '&ThemeID=' + encodeURIComponent(themeId);
+    url += '&depth=' + this.depth;
+    if (this.debug) console.log('GET:' + url);
+    this.abort = new AbortController();
+    try {
+      const r = await fetch(url, { cache: 'no-store', signal: this.abort.signal });
+      const text = await r.text();
+      const parser = new Parser();
+      for (const line of text.split('\n')) if (line.length > 0) parser.parseLine(line.replace(/\r$/, ''));
+      if (this.alive) this.applet.setGraphModel(parser.getGraphModel());
+    } catch (e) {
+      if (this.alive) console.log('InfoRequestThread::getFromCGI:Error during http request:' + e);
+    }
+  }
+  getFromAppletParameters() {
+    const parser = new Parser();
+    for (let i = 0; this.applet.getParameter('line_' + i) != null; i++)
+      parser.parseLine(this.applet.getParameter('line_' + i));
+    this.applet.setGraphModel(parser.getGraphModel());
+  }
+}
+
+/* ---- graph/OrderedHashtable.java: the nodes of the view in their Z order.
+ * The last key is painted last, on top, and wins a hit test. ---- */
+class OrderedHashtable {
+  constructor() { this.map = new Map(); }
+  get(key) { return this.map.has(key) ? this.map.get(key) : null; }
+  put(key, value) {
+    const prev = this.get(key);
+    this.map.delete(key);          /* a re-put moves the key to the top */
+    this.map.set(key, value);
+    return prev;
+  }
+  remove(key) { const prev = this.get(key); this.map.delete(key); return prev; }
+  keys() { return this.map.keys(); }
+  elements() { return Array.from(this.map.values()); }
+  putTop(key) {
+    if (!this.map.has(key)) return;
+    const v = this.map.get(key);
+    this.map.delete(key);
+    this.map.set(key, v);
+  }
+}
+
+/* ---- graph/GraphView.java: the panel. Model walking, placement, painting
+ * and the mouse, as in 1999. ---- */
+class GraphView {
+  constructor(applet, graphModel, canvas) {
+    this.applet = applet;
+    this.graphModel = graphModel;
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.visitedNodes = [];
+    this.nodes = new OrderedHashtable();
+    this.motor = new Motor(this);
+    this.centralNode = null;
+    this.longLabeledNodeView = null;
+    this.depth = 2;
+    this.CHILD_EDGE_LENGTH = 120;
+    this.ELLIPSOIDALITY = 2;
+    this.PARENT_EDGE_LENGTH = 120;
+    this.SECTOR_FOR_NEIGHBOURS = 120;
+    this.math = AngleMath;
+    this.state = GraphView.IDLE;
+    this.draggedNode = null;
+    this.prevClick = Date.now();
+    this.deltaBetweenClicks = 300;
+    this.animation = new Animation(this, applet);
+    this.cssWidth = 1; this.cssHeight = 1;
+    this.fit();
+    this.bindMouse();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { this.fit(); this.repaint(); }).observe(canvas);
+    else window.addEventListener('resize', () => { this.fit(); this.repaint(); });
+  }
+  /* the canvas backing store follows its CSS box and the device pixel ratio */
+  fit() {
+    const r = this.canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.cssWidth = Math.max(1, Math.round(r.width));
+    this.cssHeight = Math.max(1, Math.round(r.height));
+    const w = Math.round(this.cssWidth * dpr), h = Math.round(this.cssHeight * dpr);
+    if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
+    this.dpr = dpr;
+  }
+  size() { return { width: this.cssWidth, height: this.cssHeight }; }
+  bounds() { return this.size(); }
+  setInitNode(node) {
+    this.centralNode = this.createNode(node);
+    this.centralNode.setCenter(this.getCenterX(), this.getCenterY());
+    this.addNode(node.getID(), this.centralNode);
+    this.centralNode.setHighlighted(true);
+    this.setState(GraphView.IDLE);
+    this.applet.showUrl(node);
+  }
+  /* make a node the central node */
+  selectNode(node) {
+    this.motor.resumeThread();
+    const nodeView = this.getNode(node.id);
+    if (nodeView == null) {                     /* absent in the view */
+      this.removeAll();
+      this.centralNode = this.createNode(node);
+      this.centralNode.setCenter(this.getCenterX(), this.getCenterY());
+      this.addNode(node.getID(), this.centralNode);
+      this.centralNode.setHighlighted(true);
+      this.setState(GraphView.IDLE);
+      this.applet.resetGraphModel(node.id, this.depth);
+    } else if (nodeView.isTerminal()) {         /* terminals only show their URL */
+      this.deselectAll();
+      nodeView.setHighlighted(true);
+    } else {
+      this.moveToCenter(nodeView);
+    }
+  }
+  moveToCenter(nodeView) {
+    this.centralNode = nodeView;
+    this.removeAllButCentral();
+    this.setState(GraphView.ADVANCING);
+    nodeView.addArriveEventListener(this);
+    const v = nodeView.getVelocity(this.bounds().width >> 1, this.bounds().height >> 1, 30);
+    this.setV(v);
+    this.applet.resetGraphModel(nodeView.getNodeModel().getID(), this.depth);
+  }
+  createNode(nodeModel) { return new NodeView(this, nodeModel); }
+  expandNode(nodeView) {
+    if (nodeView == null) { console.log('Trying to expand null!'); return; }
+    this.removeAllButCentral();
+    nodeView.expanded = false;
+    nodeView.fromAngle = 0;
+    this.expand(nodeView, 1, this.depth);       /* level by level from the model */
+    this.addVisitedNode(nodeView.nodeModel);
+    this.centralNode.visited = true;
+    this.deselectAll();                         /* hack to walk around a deselection bug */
+    nodeView.setHighlighted(true);
+    this.motor.suspendThread();
+    this.repaint();
+  }
+  expandCentral() { this.expandNode(this.centralNode); }
+  doubleClickOnNode(shift, nodeView) {
+    const nodeModel = nodeView.getNodeModel();
+    this.deselectAll();
+    nodeView.setHighlighted(true);
+    if (!nodeView.isTerminal()) this.selectNode(nodeModel);
+    else this.motor.suspendThread();
+    if (!shift) this.applet.showUrl(nodeModel);
+  }
+  getDepth() { return this.depth; }
+  setDepth(depth) {
+    this.depth = depth;
+    this.expandNode(this.centralNode);
+    this.repaint();
+  }
+  removeAllButCentral() {
+    this.removeAll();
+    this.addNode(this.centralNode.nodeModel.id, this.centralNode);
+  }
+  getCentralNode() { return this.centralNode; }
+  getState() { return this.state; }
+  setState(s) { this.state = s; }
+  deselectAll() { for (const n of this.nodes.elements()) n.setHighlighted(false); }
+  translate(x, y) { for (const n of this.nodes.elements()) { n.x += x; n.y += y; } }
+  /* the topmost node view containing the point */
+  getContains(x, y) {
+    let lastNode = null;
+    for (const node of this.nodes.elements()) if (node.inside(x, y)) lastNode = node;
+    return lastNode;
+  }
+  getNode(key) { return this.nodes.get(key); }
+  addNode(key, node) { return this.nodes.put(key, node); }
+  removeNode(key) { return this.nodes.remove(key); }
+  isVisited(node) { return this.visitedNodes.indexOf(node.nodeModel.id) >= 0; }
+  addVisitedNode(node) { if (this.visitedNodes.indexOf(node.id) < 0) this.visitedNodes.push(node.id); }
+  removeAll() { this.nodes = new OrderedHashtable(); }
+  setV(vx, vy) { for (const n of this.nodes.elements()) n.setV(vx, vy); }
+  /* build the view from the model recursively, beginning at the node passed */
+  expand(nodeView, level, depth) {
+    if (nodeView.expanded) return;
+    nodeView.expanded = true;
+    const nodeModel = nodeView.getNodeModel();
+    const childrenIds = nodeModel.getChildrenIds().slice();
+    const parentsIds = nodeModel.getParentsIds().slice();
+    const numOfChildren = childrenIds.length, numOfParents = parentsIds.length;
+    if (numOfChildren > 0) nodeView.setTerminal(false);
+    else {
+      nodeView.setTerminal(true);
+      if (numOfParents === 0) return;           /* a single node */
+    }
+    if (level === depth) return;                /* the boundary level */
+    let angleBetween;
+    if (level === 1) angleBetween = Math.trunc(360 / (numOfChildren + numOfParents));
+    else angleBetween = Math.trunc(this.SECTOR_FOR_NEIGHBOURS / (numOfChildren + numOfParents));
+    let n = 0;
+    for (; n < numOfParents; n++) {
+      const aParentId = parentsIds[n];
+      let aParent = this.getNode(aParentId);
+      if (aParent == null) {
+        aParent = this.createNeighbour(nodeView, aParentId, n, angleBetween, this.PARENT_EDGE_LENGTH);
+        this.addNode(aParentId, aParent);
+      }
+    }
+    for (let j = 0; j < numOfChildren; j++, n++) {
+      const aChildId = childrenIds[j];
+      let aChild = this.getNode(aChildId);
+      if (aChild == null) {
+        aChild = this.createNeighbour(nodeView, aChildId, n, angleBetween, this.CHILD_EDGE_LENGTH);
+        this.addNode(aChildId, aChild);
+      }
+    }
+    for (let i = 0; i < numOfParents; i++) {
+      const aParent = this.getNode(parentsIds[i]);
+      if (aParent != null) this.expand(aParent, level + 1, depth);
+    }
+    for (let i = 0; i < numOfChildren; i++) {
+      const aChild = this.getNode(childrenIds[i]);
+      if (aChild != null) this.expand(aChild, level + 1, depth);
+    }
+  }
+  /* a neighbour placed on the sector around its parent node view */
+  createNeighbour(parentNodeView, aChildId, i, angleBetween, edgeLength) {
+    const math = this.math;
+    let aNodeFromModel = this.applet.getGraphModel().getNode(aChildId);
+    if (aNodeFromModel == null)                 /* a dummy node */
+      aNodeFromModel = new Node(aChildId, 'label id=' + aChildId, '', null, [], []);
+    const angle = angleBetween * i + parentNodeView.fromAngle;
+    const dx = math.sin(angle);
+    const centerX = parentNodeView.getMiddleX() + Math.trunc(edgeLength * dx);
+    const centerY = parentNodeView.getMiddleY() - Math.trunc(edgeLength * math.cos(angle));
+    const aChild = this.createNode(aNodeFromModel);
+    aChild.setCenter(centerX, centerY);
+    if (this.isVisited(aChild)) aChild.visited = true;
+    aChild.fromAngle = angleBetween * i + parentNodeView.fromAngle - (this.SECTOR_FOR_NEIGHBOURS >> 1);
+    this.addNode(aChildId, aChild);
+    return aChild;
+  }
+  getGraphLeftBound() { return 1; }
+  getGraphRightBound() { return this.size().width - 2; }
+  getGraphTopBound() { return 1; }
+  getGraphBottomBound() { return this.size().height - 2; }
+  getCenterX() { return this.size().width >> 1; }
+  getCenterY() { return this.size().height >> 1; }
+  getCenter() { return { x: this.getCenterX(), y: this.getCenterY() }; }
+  updatePositionDuringDrag(x, y, forAll) {
+    const d = this.draggedNode;
+    const leftBound = this.getGraphLeftBound(), rightBound = this.getGraphRightBound() - d.width;
+    const topBound = this.getGraphTopBound(), bottomBound = this.getGraphBottomBound() - d.height;
+    if (forAll) return;
+    d.x += x - d.oldx;
+    d.y += y - d.oldy;
+    d.oldx = x; d.oldy = y;
+    if (d.x < leftBound) { d.x = leftBound; d.oldx = leftBound; }
+    else if (d.x > rightBound) { d.x = rightBound; d.oldx = rightBound; }
+    if (d.y < topBound) { d.y = topBound; d.oldy = topBound; }
+    else if (d.y > bottomBound) { d.y = bottomBound; d.oldy = bottomBound; }
+  }
+  /* Component.repaint(): AWT ran update(g) on its own thread, so the motor's
+   * tick and a mouse move each move the nodes one step and paint. Synchronous
+   * on purpose: requestAnimationFrame stops in a hidden tab and in a headless
+   * capture, and the glide with it. */
+  repaint() { this.update(); }
+  /* update(Graphics): move every node, then paint */
+  update() {
+    for (const node of this.nodes.elements()) node.update();
+    this.paint();
+  }
+  paint() {
+    const ctx = this.ctx, w = this.size().width, h = this.size().height;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const g = new Graphics(ctx);
+    g.setColor(Color.white);
+    g.fillRect(0, 0, w, h);
+    g.setColor(Color.black);
+    if (this.applet.isWaitingForServer()) this.animation.paint(g, w, h);
+    this.paintEdges(g);
+    this.paintNodes(g);
+  }
+  /* edges of a node to its parents and children in the view, and dummy edges
+   * with bulbs for those not in it */
+  paintEdgesForNode(nodeView, g) {
+    const math = this.math, nodeModel = nodeView.nodeModel;
+    let numberOfHidden = 0;
+    for (const aParentId of nodeModel.parents.slice()) {
+      const parent = this.getNode(aParentId);
+      if (parent == null) numberOfHidden++;
+      else new Edge(nodeView, parent).paint(g);
+    }
+    for (const aChildId of nodeModel.children.slice()) {
+      const child = this.getNode(aChildId);
+      if (child == null) numberOfHidden++;
+      else {
+        if (child.visited) g.setColor(Color.blue);
+        g.drawLine(nodeView.getMiddleX(), nodeView.getMiddleY(), child.getMiddleX(), child.getMiddleY());
+        if (child.visited) g.setColor(Color.black);
+      }
+    }
+    if (numberOfHidden === 0) return;
+    const edgeLength = 35;
+    let angleRange = 90;
+    let xDistance = nodeView.getMiddleX() - this.getCenterX();
+    let yDistance = nodeView.getMiddleY() - this.getCenterY();
+    if (xDistance === 0) xDistance = 1;
+    if (yDistance === 0) yDistance = 1;
+    let thisNodeAngle = 0;
+    if (!nodeView.equals(this.centralNode)) thisNodeAngle = Math.trunc(math.atan2(yDistance, xDistance)) + 90 - (angleRange >> 1);
+    else angleRange = 360;
+    const fromAngle = thisNodeAngle;
+    const angleBetween = Math.trunc(angleRange / numberOfHidden);
+    for (let i = 0; i < numberOfHidden; i++) {
+      const angle = angleBetween * i + fromAngle;
+      const dx = math.sin(angle);
+      const nonExistingX = nodeView.getMiddleX() + Math.trunc((nodeView.width >> 1) * dx) + Math.trunc(edgeLength * dx);
+      const nonExistingY = nodeView.getMiddleY() - Math.trunc(edgeLength * math.cos(angle));
+      g.drawLine(nodeView.getMiddleX(), nodeView.getMiddleY(), nonExistingX, nonExistingY);
+      g.fillOval(nonExistingX - 2, nonExistingY - 2, 4, 4);      /* bulbs at the ends */
+    }
+  }
+  paintEdges(g) { for (const n of this.nodes.elements()) this.paintEdgesForNode(n, g); }
+  paintNodes(g) { for (const n of this.nodes.elements()) n.paint(g); }
+  /* the mouse: Event.mouseDown / mouseDrag / mouseMove / mouseUp of 1999 */
+  bindMouse() {
+    const c = this.canvas;
+    const at = (e) => {
+      const r = c.getBoundingClientRect();
+      return { x: Math.trunc(e.clientX - r.left), y: Math.trunc(e.clientY - r.top) };
+    };
+    c.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      c.setPointerCapture(e.pointerId);
+      const p = at(e);
+      this.mouseDown(e.shiftKey, p.x, p.y);
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = at(e);
+      if (this.getState() === GraphView.DRAG && (e.buttons & 1)) this.mouseDrag(e.shiftKey, p.x, p.y);
+      else this.mouseMove(e.shiftKey, p.x, p.y);
+    });
+    c.addEventListener('pointerup', (e) => { const p = at(e); this.mouseUp(e.shiftKey, p.x, p.y); });
+    c.addEventListener('pointercancel', (e) => { const p = at(e); this.mouseUp(e.shiftKey, p.x, p.y); });
+  }
+  mouseDown(shift, x, y) {
+    this.motor.resumeThread();
+    const nodeView = this.getContains(x, y);
+    if (nodeView != null) {
+      this.nodes.putTop(nodeView.nodeModel.id);
+      if (this.longLabeledNodeView != null) {
+        this.longLabeledNodeView.setLongLabel(false);
+        this.longLabeledNodeView = null;
+      }
+      const click = Date.now();
+      if (click - this.prevClick < this.deltaBetweenClicks) {
+        this.doubleClickOnNode(shift, nodeView);
+      } else {
+        this.prevClick = click;
+        nodeView.oldx = x; nodeView.oldy = y;
+        this.draggedNode = nodeView;
+        this.setState(GraphView.DRAG);
+      }
+    }
+    return true;
+  }
+  mouseDrag(shift, x, y) {
+    if (this.getState() === GraphView.DRAG && this.draggedNode != null) {
+      this.nodes.putTop(this.draggedNode.nodeModel.id);
+      this.updatePositionDuringDrag(x, y, shift);
+      this.draggedNode.resetWrappedLabel();
+    }
+    return true;
+  }
+  mouseMove(shift, x, y) {
+    if (this.getState() === GraphView.DRAG) return true;
+    const nodeView = this.getContains(x, y);
+    if (nodeView != null) {
+      this.nodes.putTop(nodeView.nodeModel.id);
+      if (nodeView !== this.longLabeledNodeView) {
+        if (this.longLabeledNodeView != null) this.longLabeledNodeView.setLongLabel(false);
+        this.longLabeledNodeView = nodeView;
+        this.longLabeledNodeView.setLongLabel(true);
+        this.repaint();
+      }
+    } else if (this.longLabeledNodeView != null) {
+      this.longLabeledNodeView.setLongLabel(false);
+      this.longLabeledNodeView = null;
+      this.repaint();
+    }
+    return true;
+  }
+  mouseUp(shift, x, y) {
+    if (this.getState() === GraphView.DRAG) {
+      this.draggedNode = null;
+      this.state = GraphView.IDLE;
+      this.motor.suspendThread();
+    }
+    return true;
+  }
+  /* ArriveEventListener: the gliding node has reached the centre */
+  onArrive(e) {
+    const node = e.getSource();
+    if (node != null) {
+      this.setV(0, 0);
+      node.removeArriveEventListener(this);
+      node.setStopBounds(null);
+      node.resetWrappedLabel();
+    }
+    this.setState(GraphView.IDLE);
+  }
+  getMotor() { return this.motor; }
+}
+GraphView.IDLE = 1;
+GraphView.DRAG = 2;
+GraphView.ADVANCING = 3;
+
+/* ---- graph/ToolsPanel.java: Tree Depth and History choices ---- */
+class ToolsPanel {
+  constructor(applet, depthChoice, historyChoice) {
+    this.applet = applet;
+    this.history = new History();
+    this.depth_choice = depthChoice;
+    this.history_choice = historyChoice;
+    depthChoice.addEventListener('change', () => {
+      const depth = parseInt(depthChoice.value, 10);
+      if (!isNaN(depth)) applet.getGraphView().setDepth(depth);
+    });
+    historyChoice.addEventListener('change', () => {
+      const itemInChoice = historyChoice.value.trim();
+      for (const key of this.history.keys()) {
+        const node = this.history.get(key);
+        if (itemInChoice === node.getLabel().trim()) {
+          applet.getGraphView().selectNode(node);
+          applet.showUrl(node);
+        }
+      }
+    });
+  }
+  addHistoryNode(node) {
+    if (this.history.getNode(node.getID()) != null) return;
+    const o = document.createElement('option');
+    o.textContent = node.getLabel();
+    this.history_choice.appendChild(o);
+    this.history_choice.value = node.getLabel();
+    this.history.addNode(node.getID(), node);
+  }
+}
+
+/* ---- NavigatorApplet.java ---- */
+class NavigatorApplet {
+  /* params: the <param> values of 1999, as an object; root: the element
+   * holding #graph, #depth, #history, #status and the "content" frame */
+  constructor(params, root) {
+    this.params = params;
+    this.root = root;
+    this.fromAppletParameters = false;
+    this.graphModel = null;
+    this.graphView = null;
+    this.waitingForServer = false;
+    this.staticApplet = false;
+    this.debug = params.debug === 'true';
+    this.toolsPanel = null;
+    this.communicationThread = null;
+    this.initialized = false;
+    this.images = new Map();
+  }
+  getParameter(name) {
+    const v = this.params[name];
+    return v == null ? null : String(v);
+  }
+  /* Applet.getImage + MediaTracker: resolved when loaded; null on failure */
+  getImage(name) {
+    if (this.images.has(name)) return this.images.get(name);
+    const p = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => { console.log('cannot load ' + name); resolve(null); };
+      img.src = name;
+    });
+    this.images.set(name, p);
+    return p;
+  }
+  showStatus(s) {
+    const el = this.root.querySelector('#status');
+    if (el) el.textContent = s;
+  }
+  async init() {
+    this.graphModel = new GraphModel();
+    this.graphView = new GraphView(this, this.graphModel, this.root.querySelector('#graph'));
+    this.toolsPanel = new ToolsPanel(this, this.root.querySelector('#depth'), this.root.querySelector('#history'));
+    if (this.getParameter('line_0') != null) this.fromAppletParameters = true;
+    const categories = new Categories(this);
+    await categories.loadImages();
+    await this.graphView.animation.loadImages();
+    const s = this.getParameter('static_version');
+    if (s != null && (s === 'true' || s === 'yes')) this.staticApplet = true;
+    const keywordid = this.getParameter('first_node');
+    if (keywordid == null) console.log('first_node is null');
+    this.resetGraphModel(keywordid, this.graphView.getDepth());
+  }
+  start() { this.graphView.getMotor().start(); }
+  stop() { this.graphView.getMotor().stop(); }
+  setGraphModel(m) { this.graphModel = m; }
+  /* refill the cache from the server (or the parameters) */
+  resetGraphModel(keywordid, depth) {
+    if (this.staticApplet && this.graphModel != null && this.initialized) return;
+    this.setWaitingForServer(true);
+    if (this.communicationThread != null) this.communicationThread.stop();
+    this.communicationThread = new InfoRequest(this, keywordid, depth, this.fromAppletParameters);
+    this.communicationThread.setDebug(this.debug);
+    this.communicationThread.start();
+  }
+  /* callback from the request when the data has arrived */
+  dataReady(firstNodeId) {
+    this.setWaitingForServer(false);
+    if (this.debug) console.log(this.graphModel.toString());
+    if (!this.initialized) {
+      const firstNode = this.graphModel.getNode(firstNodeId);
+      if (firstNode == null) {
+        console.log('The first node with id=' + firstNodeId + ' is absent in data!');
+        this.showStatus('The first node with id=' + firstNodeId + ' is absent in data');
+        return;
+      }
+      this.graphView.setInitNode(firstNode);
+      this.initialized = true;
+    }
+    const wait = () => {
+      if (this.graphView.getState() === GraphView.ADVANCING) setTimeout(wait, 100);
+      else this.graphView.expandCentral();
+    };
+    wait();
+  }
+  isWaitingForServer() { return this.waitingForServer; }
+  setWaitingForServer(w) {
+    this.waitingForServer = w;
+    this.showStatus(w ? 'Getting information from the server' : '');
+  }
+  getGraphView() { return this.graphView; }
+  getGraphModel() { return this.graphModel; }
+  /* show the node's URL in the "content" frame and put it into the history */
+  showUrl(node) {
+    this.toolsPanel.addHistoryNode(node);
+    const frame = this.root.querySelector('iframe[name=content]');
+    if (frame == null) return;
+    let url = node.getUrl();
+    if (url == null) { console.log('Trying to connect with null URL'); return; }
+    url = url.trim();
+    if (url === '') {
+      /* no document: show the record itself (a deviation, doc/PORT.md) */
+      frame.removeAttribute('src');
+      frame.srcdoc = '<pre style="font:13px monospace;white-space:pre-wrap">' +
+        NavigatorApplet.escape(node.toString().split(';').join(';\n')) + '</pre>';
+      return;
+    }
+    this.showStatus(url + ' connecting...');
+    frame.removeAttribute('srcdoc');
+    frame.src = url;
+    this.showStatus('');
+  }
+  static escape(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+}
+
+/* the page: parameters from GRAPHCRAWL_PARAMS, the first node from #id in
+ * the URL or from the server's /api/info */
+window.addEventListener('DOMContentLoaded', async () => {
+  const params = window.GRAPHCRAWL_PARAMS || {};
+  if (location.hash.length > 1) params.first_node = decodeURIComponent(location.hash.slice(1));
+  if (params.first_node == null && params.cgi != null && params.line_0 == null) {
+    try {
+      const t = await (await fetch('/api/info', { cache: 'no-store' })).text();
+      const m = /^first=(.*)$/m.exec(t);
+      if (m) params.first_node = m[1].trim();
+    } catch (e) { console.log('no /api/info: ' + e); }
+  }
+  const applet = new NavigatorApplet(params, document);
+  window.graphcrawl = applet;
+  await applet.init();
+  applet.start();
+});

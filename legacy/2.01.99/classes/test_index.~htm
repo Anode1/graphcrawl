@@ -1,0 +1,58 @@
+<html>
+
+<head>
+<meta http-equiv="Content-Type"
+content="text/html; charset=iso-8859-1">
+<meta name="GENERATOR" content="Microsoft FrontPage Express 2.0">
+<title></title>
+</head>
+
+<applet
+code="NavigatorApplet.class"
+align="baseline" width=500 height=500
+>
+
+<param name="cgi" value="http://mycity.yi.org/beta/scripts/applet/child.navigational.cgi">
+<param name="first_node" value="0">
+<param name="static_version" value="false">
+<param name="iconFromX" value="30">
+<param name="iconFromY" value="400">
+<param name="wid" value="1">
+<param name="themeId" value="1">
+
+<param name="ovals_min_id" value="-600">
+<param name="ovals_max_id" value="-214">
+
+<param name="category_icon_1" value="minus.gif">
+<param name="category_icon_2" value="exclaim.gif">
+<param name="category_icon_3" value="external.gif">
+<param name="category_icon_4" value="plus.gif">
+<param name="category_icon_5" value="query.gif">
+
+<param name="number_of_frames_in_anim" value="2">
+<param name="file_1" value="server1.gif">
+<param name="file_2" value="server2.gif">
+
+<param name=line_0  value='0;SIMULATION GAME;0;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=1&wid=1&ThemeID=1;-300,2,63,24;'>
+<param name=line_1  value='-300;GOAL;1;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=1&wid=1&ThemeID=1;59,60,61;0'>
+<param name=line_2  value='2;CONCEPT;2;http://www.thinkwire.net/scripts/document/document.cgi?page=6&keywordid=2&wid=1&ThemeID=1;-500,7,8,55,56,57,58;0'>	
+<param name=line_3  value='-500;PROJECTS;3;http://www.thinkwire.net/scripts/document/document.cgi?page=6&keywordid=6&wid=1&ThemeID=1;47,48,49,50;2'>
+<param name=line_4  value='7;CONTEXTUAL INFORMATION (long label);4;http://www.thinkwire.net/scripts/document/document.cgi?page=6&keywordid=7&wid=1&ThemeID=1;21,22,23,34,35,36;2'>	
+<param name=line_5  value='8;CHARACTERS;5;http://www.thinkwire.net/scripts/document/document.cgi?page=6&keywordid=8&wid=1&ThemeID=1;12,13,14,15,16,17,18,19,20;2'>	
+<param name=line_6  value='21;cultural context;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=21&wid=1&ThemeID=1;24,25,26,27;7'>	
+<param name=line_7  value='22;political context;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=22&wid=1&ThemeID=1;28,29,30;7'>	
+<param name=line_8  value='23;demographic information;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=23&wid=1&ThemeID=1;31,32,33;7'>	
+<param name=line_9  value='34;health and education;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=34&wid=1&ThemeID=1;37,38,39,40;7'>	
+<param name=line_10  value='35;project information;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=35&wid=1&ThemeID=1;41,42,43;7'>	
+<param name=line_11  value='36;team member information;;http://www.thinkwire.net/scripts/document/document.cgi?page=4&keywordid=36&wid=1&ThemeID=1;44,45,46;7'>	
+<param name=line_12  value='12;Asia;;http://www.thinkwire.net/scripts/document/document.cgi?page=3&keywordid=47&wid=1&ThemeID=1;;8'>	
+<param name=line_13  value='13;Africa very very very long label sdfg sfdg  sdfg fsdg sdfg fds gsdf gfdsg sdfg dsfg dfsg fds gfds gfds gfds this_is_very_big_word sdfgfdsg;;http://www.thinkwire.net/scripts/document/document.cgi?page=3&keywordid=48&wid=1&ThemeID=1;;8'>	
+<param name=line_14  value='14;Latin America;;http://www.thinkwire.net/scripts/document/document.cgi?page=3&keywordid=49&wid=1&ThemeID=1;;8'>	
+<param name=line_15  value='15;Europe;;http://www.thinkwire.net/scripts/document/document.cgi?page=3&keywordid=50&wid=1&ThemeID=1;;8'>	
+<param name=line_16  value='11;DEVELOPMENT PROCESS;;http://www.thinkwire.net/scripts/document/document.cgi?page=6&keywordid=63&wid=1&ThemeID=1;;8'>	
+<param name=line_17  value='24;1 2 3 4 5 55 666 7777 88888 999999 1010101010;;http://www.sun.com;12,13,14;0'>
+
+
+</applet>
+</body>
+</html>

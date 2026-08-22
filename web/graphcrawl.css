@@ -1,0 +1,17 @@
+/* graphcrawl.css -- the 1999 frameset: applet left, content frame right.
+ * The applet panel is white, the tools panel light gray, as AWT drew them. */
+html, body { height: 100%; margin: 0; background: #ffffff; color: #000000;
+  font: 12px sans-serif; }
+body { display: flex; }
+#applet { flex: 0 0 60%; display: flex; flex-direction: column; min-width: 300px;
+  resize: horizontal; overflow: hidden; border-right: 1px solid #808080; }
+#graph { flex: 1 1 auto; width: 100%; min-height: 0; display: block;
+  cursor: default; touch-action: none; user-select: none; }
+#tools { flex: 0 0 auto; background: #c0c0c0; padding: 5px; display: flex;
+  gap: 10px; align-items: center; flex-wrap: wrap; }
+#tools label { display: flex; gap: 4px; align-items: center; }
+#history { min-width: 100px; }
+#hint { color: #404040; }
+#status { flex: 0 0 auto; min-height: 1.2em; padding: 2px 5px; background: #c0c0c0;
+  border-top: 1px solid #808080; }
+iframe[name=content] { flex: 1 1 auto; border: 0; min-width: 0; }
