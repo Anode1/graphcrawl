@@ -13,7 +13,7 @@ Ten lines or a billion, the process is the same two megabytes.
 <p align="center">
   <img src="screenshots/crawl.gif" width="80%" alt="a crawl through the package dependency graph: bash, then libc6 gliding to the centre with the connecting animation, then a dependent opened in place and crawled into">
 </p>
-<p align="center"><em>The package dependency graph of a Linux machine (85,108 packages, <code>util/aptgraph.py</code>): the thirty nearest to <code>bash</code>; a double-click on <code>libc6</code>, which glides to the centre while the server answers and comes back with thirty of its 40,000 dependents; one of them opened in place with Alt, then crawled into.</em></p>
+<p align="center"><em>The package dependency graph of a Linux machine (85,108 packages, <code>util/aptgraph.py</code>): the 80 nearest to <code>bash</code>, several levels deep at 14 per node; a double-click on <code>libc6</code>, which glides to the centre while the server answers and comes back with its nearest of 24,744 dependents; one of them opened in place with Alt, then crawled into, where the panel fills again.</em></p>
 <p align="center">
   <img src="screenshots/hub.png" width="70%" alt="the 25 nodes nearest a hub of 394 children; the rest are stubs with a count">
 </p>

@@ -1,6 +1,7 @@
 /* serve.c -- see serve.h. The shape is ais's serve.c: accept, read, route,
- * write, close. No mutation endpoint exists, so there is nothing a cross-site
- * page could do here beyond reading a graph the user already serves. */
+ * write, close, one process per connection. No mutation endpoint exists, so
+ * there is nothing a cross-site page could do here beyond reading a graph the
+ * user already serves, and nothing for the processes to share. */
 #define _POSIX_C_SOURCE 200809L
 #include <netinet/in.h>
 #include <signal.h>
@@ -9,6 +10,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -314,6 +316,7 @@ int gc_serve(struct gc_graph *g, int port, int open_browser)
     struct sockaddr_in addr;
 
     signal(SIGPIPE, SIG_IGN);           /* a client hangup must not kill us */
+    signal(SIGCHLD, SIG_IGN);           /* answered connections reap themselves */
     sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sfd < 0)
         return -1;
@@ -332,6 +335,7 @@ int gc_serve(struct gc_graph *g, int port, int open_browser)
         launch_browser(port);
     for (;;) {
         struct timeval tv;
+        pid_t pid;
 
         cfd = accept(sfd, NULL, NULL);
         if (cfd < 0)
@@ -339,7 +343,19 @@ int gc_serve(struct gc_graph *g, int port, int open_browser)
         tv.tv_sec = 5;                 /* a silent client must not park the loop */
         tv.tv_usec = 0;
         setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-        handle(g, cfd);
+        /* One process per connection, so a full scan (/api/find streams the
+         * whole file, 19.6 s for 6.6 GB) does not park every other request
+         * behind it. The child inherits the open graph and seeks its own copy
+         * of the offsets; nothing is written, so there is nothing to share. */
+        pid = fork();
+        if (pid == 0) {
+            close(sfd);
+            handle(g, cfd);
+            close(cfd);
+            _exit(0);
+        }
+        if (pid < 0)                   /* out of processes: answer it here */
+            handle(g, cfd);
         close(cfd);
     }
 }

@@ -254,6 +254,45 @@ int main(void)
     }
     gc_close(&g);
 
+    /* the budget counts nodes sent: a dangling id costs a lookup, not a place
+     * in the answer, so a budget of 3 still returns 3 lines */
+    write_file(gpath, "1;;;;2,999;\n2;;;;3;\n3;;;;4;\n4;;;;;\n");
+    CHECK(gc_open(&g, gpath) == 0);
+    {
+        struct collect c = { {0}, 0 };
+        int cut;
+        CHECK(gc_neighbourhood(&g, 1, 0, 3, collect_cb, &c, &cut) == 3 && cut == 1);
+        CHECK(c.ids[0] == 1 && c.ids[1] == 2 && c.ids[2] == 3);
+        c.n = 0;                       /* the whole graph, 999 skipped, no cut */
+        CHECK(gc_neighbourhood(&g, 1, 0, 100, collect_cb, &c, &cut) == 4 && cut == 0);
+    }
+    gc_close(&g);
+
+    /* bounds: the last id from a file ending in a comment and a blank line,
+     * and from one whose last line outruns the first backward window */
+    write_file(gpath, "1;a;;;;\n5;b;;;;\n\n# trailing\n\n");
+    CHECK(gc_open(&g, gpath) == 0);
+    {
+        long long first, last;
+        CHECK(gc_bounds(&g, &first, &last) == 0 && first == 1 && last == 5);
+    }
+    gc_close(&g);
+    {
+        FILE *f = fopen(gpath, "w");
+        int i;
+        fputs("1;a;;;;\n2;", f);
+        for (i = 0; i < 9000; i++)
+            putc('x', f);
+        fputs(";;;;\n", f);
+        fclose(f);
+        CHECK(gc_open(&g, gpath) == 0);
+        {
+            long long first, last;
+            CHECK(gc_bounds(&g, &first, &last) == 0 && first == 1 && last == 2);
+        }
+        gc_close(&g);
+    }
+
     /* search: case-insensitive substring on the label, capped */
     write_file(gpath, "1;Alder tree;;;;\n2;basalt;;;;\n3;alder again;;;;\n4;Alder;;;;\n");
     unlink(ppath);

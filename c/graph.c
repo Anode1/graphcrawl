@@ -314,7 +314,7 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
         limit = GC_VISIT_MAX;
     memset(w.slot, 0, sizeof w.slot);
     w.n = 0;
-    walk_add(&w, id, 1, limit);
+    walk_add(&w, id, 1, GC_VISIT_MAX);
     while (head < w.n) {
         long long cur = w.seen[head];
         int level = w.level[head], i;
@@ -332,15 +332,23 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
             *cut = 1;                  /* its own lists did not fit the line */
         if (depth > 0 && level >= depth)
             continue;
-        /* Every neighbour is offered even once the budget is spent: only an id
-         * the view does not already hold counts as a node left out, so a walk
-         * that closed on itself is not reported as cut. */
+        /* The queue is bounded by the table, not by the budget: an id that
+         * turns out to have no line costs a lookup and no node, and the caller
+         * asked for LIMIT nodes, not LIMIT lookups. */
         for (i = 0; i < l.nchildren; i++)
-            if (walk_add(&w, l.children[i], level + 1, limit) < 0)
+            if (walk_add(&w, l.children[i], level + 1, GC_VISIT_MAX) < 0)
                 *cut = 1;
         for (i = 0; i < l.nparents; i++)
-            if (walk_add(&w, l.parents[i], level + 1, limit) < 0)
+            if (walk_add(&w, l.parents[i], level + 1, GC_VISIT_MAX) < 0)
                 *cut = 1;
+        /* The budget is spent. Anything still queued is a node the view will
+         * not hold, drawn as a stub; an empty queue means the walk closed on
+         * itself and nothing was left out, however exactly it filled up. */
+        if (emitted >= limit) {
+            if (head < w.n)
+                *cut = 1;
+            break;
+        }
     }
     return emitted;
 }
@@ -348,26 +356,34 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
 int gc_bounds(struct gc_graph *g, long long *first, long long *last)
 {
     char buf[GC_LINE_MAX];
-    off_t at, pos;
+    off_t at, pos, window;
     long n;
     int have = 0;
 
     n = node_line_from(g->fp, 0, g->size, buf, sizeof buf, &at, first);
     if (n <= 0)
         return -1;
-    /* the last node line: read forward from the last GC_LINE_MAX bytes */
-    pos = g->size > (off_t)sizeof buf ? g->size - (off_t)sizeof buf : 0;
-    pos = line_start(g->fp, pos, g->size);
-    while (pos < g->size) {
-        long long id;
-        n = read_at(g->fp, pos, buf, sizeof buf);
-        if (n <= 0)
-            break;
-        if (gc_line_id(buf, &id) == 0) {
-            *last = id;
-            have = 1;
+    /* The last node line: step back from the end in doubling windows and read
+     * the last one forward. A whole GC_LINE_MAX window would parse every line
+     * it holds, six thousand of them at 40 bytes a line, on every /api/info. */
+    for (window = 4096; !have; window *= 2) {
+        pos = g->size > window ? g->size - window : 0;
+        pos = line_start(g->fp, pos, g->size);
+        if (pos < 0)
+            return -1;
+        while (pos < g->size) {
+            long long id;
+            n = read_at(g->fp, pos, buf, sizeof buf);
+            if (n <= 0)
+                break;
+            if (gc_line_id(buf, &id) == 0) {
+                *last = id;
+                have = 1;
+            }
+            pos += n;
         }
-        pos += n;
+        if (g->size <= window)         /* the window covered the whole file */
+            break;
     }
     if (!have)
         *last = *first;

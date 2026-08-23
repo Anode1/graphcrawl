@@ -63,13 +63,13 @@ int gc_search(struct gc_graph *g, const char *text, int max,
 int gc_group(FILE *in, FILE *out, FILE *report);
 
 /* The nodes nearest ID, breadth first over children and parents, ID first,
- * each handed to EMIT with its full lists: visiting at most LIMIT nodes
- * (capped at GC_VISIT_MAX), and within DEPTH-1 hops when DEPTH is not 0. A
- * visited id with no line sends nothing, so the count can be under LIMIT.
- * *CUT is set only when something was left out: a neighbour the budget had no
- * room for, or a list too long for its line. A small graph comes out whole
- * and uncut however exactly it fills the budget.
- * Returns the count, -1 if ID is absent. */
+ * each handed to EMIT with its full lists: at most LIMIT of them (capped at
+ * GC_VISIT_MAX), and within DEPTH-1 hops when DEPTH is not 0. The budget
+ * counts nodes sent, so an id that turns out to have no line costs a lookup
+ * and no budget. *CUT is set only when something was left out: a node still
+ * on the frontier when the budget ran out, or a list too long for its line.
+ * A small graph comes out whole and uncut however exactly it fills the
+ * budget. Returns the count, -1 if ID is absent. */
 int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
                      gc_emit_fn emit, void *ctx, int *cut);
 

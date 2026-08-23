@@ -32,20 +32,20 @@ the engine's footprint is its fixed buffers (`c/common.h`), the same for ten
 lines and a trillion.
 
 A click asks for the nodes nearest one node: a breadth-first walk over
-children and parents visiting at most N nodes (`limit=N`), within D hops
+children and parents until N of them are in hand (`limit=N`), within D hops
 when a cap is given (`depth=D`; the 1999 request was depth alone), each
 visited node one lookup (two with a parents file), every node's line sent
 whole so the view can draw stubs for the neighbours it does not show. The
-budget counts what the walk visits, so an id that turns out to have no line
-spends budget and sends none: the lines returned can be fewer than N. A
-graph smaller than the budget comes out whole. Memory is the visited table,
-bounded at `GC_VISIT_MAX` (16384) nodes, the budget's ceiling.
+budget counts nodes sent, so an id that turns out to have no line costs a
+lookup and no budget, and a view of N is a view of N. A graph smaller than
+the budget comes out whole. Memory is the visited table, bounded at
+`GC_VISIT_MAX` (16384) nodes whatever the budget.
 
 The response ends with a `#cut N` line, which the page reports, when the
-walk left something out: a neighbour the budget had no room for, or a list
-too long for its line. A walk that closed on itself is not cut, however
-exactly it filled the budget, so a view whose nodes are all green never
-carries the trailer.
+walk left something out: a node still on the frontier when the budget ran
+out, or a list too long for its line. A walk that closed on itself is not
+cut, however exactly it filled the budget, so a view whose nodes are all
+green never carries the trailer.
 
 Locality is what makes this fast rather than merely possible. Ids near each
 other in value are near each other in the file, and a node's neighbours in

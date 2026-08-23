@@ -134,6 +134,17 @@ eq "HEAD of a missing asset is 404"  "404" "$(curl -s -o /dev/null -w '%{http_co
 # the content frame may not open a url the graph file made up
 ok "the page sandboxes the content frame" 'sandbox="allow-scripts' "$(curl -s "$B/")"
 ok "... and refuses a non-http url"  "safeUrl" "$(curl -s "$B/graphcrawl.js")"
+# one process per connection: a client that connects and sends nothing holds a
+# child for the 5 s read timeout, and the next request must not wait behind it
+if command -v nc >/dev/null 2>&1; then
+	(sleep 4 | nc 127.0.0.1 "$PORT" >/dev/null 2>&1) & HOLD=$!
+	sleep 0.3
+	eq "a held connection blocks nothing" "200" \
+	   "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$B/api/info")"
+	kill $HOLD 2>/dev/null
+else
+	echo "  SKIP concurrency (no nc)"
+fi
 
 echo "passed $pass, failed $fail"
 [ $fail -eq 0 ]

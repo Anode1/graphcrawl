@@ -8,13 +8,19 @@
 <!-- The README's moving figure: a scripted crawl through the package
      dependency graph (util/aptgraph.py), captured frame by frame at
      successive virtual-time budgets by tests/film.sh. Served over the
-     embedded files with GRAPHCRAWL_WEB=tests. The timeline, in ms of
-     virtual time: 0 load at bash; 3000 hover coreutils; 4200 double-click
-     libc6, which glides to the centre while the server is asked (delay_ms
-     keeps the 1999 animation on screen); 8200 Alt+double-click a dependent
-     with a few neighbours to open it in place; 10300 hover it; 11300
-     double-click it: the second crawl. No content frame: the graph has the
-     width. -->
+     embedded files with GRAPHCRAWL_WEB=tests.
+
+     A budget of 110 with fanout_max 14 fills the panel several levels deep
+     instead of drawing one ring: each node places at most 14 neighbours, so
+     the budget is spent on depth and the rest of a node's neighbours are
+     stubs with a count. The ids are resolved before the applet starts, so
+     the first move happens as the view appears and a loop of the gif has no
+     still opening. The timeline, in ms of virtual time: 0 load at bash;
+     1800 hover a dependent; 2800 double-click libc6, which glides to the
+     centre while the server is asked (delay_ms keeps the 1999 animation on
+     screen); 6300 Alt+double-click a dependent to open it in place; 8300
+     hover it; 9300 double-click it: the second crawl, and the panel fills
+     again. No content frame: the graph has the width. -->
 <div id="applet">
   <canvas id="graph"></canvas>
   <div id="tools">
@@ -29,7 +35,7 @@
 
 <script>
 window.GRAPHCRAWL_PARAMS = {
-  cgi: "/api/node", limit: "30", delay_ms: "900",
+  cgi: "/api/node", limit: "110", fanout_max: "14", delay_ms: "900",
   iconFromX: "30", iconFromY: "30",
   number_of_frames_in_anim: "2", file_1: "server1.gif", file_2: "server2.gif"
 };
@@ -42,8 +48,14 @@ async function idOf(label) {
   }
   return null;
 }
+var ids = {};
+/* resolved before the applet starts, so the first move needs no lookup and
+   the film opens on motion rather than on a held still */
 window.GRAPHCRAWL_BEFORE = async function (params) {
-  params.first_node = await idOf('bash');
+  ids.bash = await idOf('bash');
+  ids.coreutils = await idOf('coreutils');
+  ids.libc6 = await idOf('libc6');
+  params.first_node = ids.bash;
 };
 window.addEventListener('DOMContentLoaded', function () {
   var at = function (ms, fn) { setTimeout(fn, ms); };
@@ -59,23 +71,22 @@ window.addEventListener('DOMContentLoaded', function () {
     var nv = gv.getNode(id);
     if (nv) gv.mouseMove(false, nv.getMiddleX(), nv.getMiddleY());
   };
-  var ids = {};
-  at(1500, async function () { ids.coreutils = await idOf('coreutils'); ids.libc6 = await idOf('libc6'); });
-  at(3000, function () { hover(window.graphcrawl.getGraphView(), ids.coreutils); });
-  at(4200, function () { dbl(window.graphcrawl.getGraphView(), ids.libc6, {}); });
-  at(8200, function () {
+  at(1800, function () { hover(window.graphcrawl.getGraphView(), ids.coreutils); });
+  at(2800, function () { dbl(window.graphcrawl.getGraphView(), ids.libc6, {}); });
+  at(6300, function () {
     var gv = window.graphcrawl.getGraphView();
-    /* a blue dependent of libc6 with a few neighbours beyond the view */
+    /* a blue dependent of libc6 whose own neighbourhood will fill the panel
+       when the film crawls into it, without being a hub itself */
     for (var n of gv.nodes.elements()) {
       if (n === gv.getCentralNode() || n.isTerminal()) continue;
       var m = n.nodeModel, hidden = 0;
       for (var id of m.children.concat(m.parents)) if (gv.getNode(id) == null) hidden++;
-      if (hidden >= 3 && hidden <= 7) { ids.pick = m.id; break; }
+      if (hidden >= 8 && hidden <= 60) { ids.pick = m.id; break; }
     }
     if (ids.pick) dbl(gv, ids.pick, { alt: true });
   });
-  at(10300, function () { hover(window.graphcrawl.getGraphView(), ids.pick); });
-  at(11300, function () { dbl(window.graphcrawl.getGraphView(), ids.pick, {}); });
+  at(8300, function () { hover(window.graphcrawl.getGraphView(), ids.pick); });
+  at(9300, function () { dbl(window.graphcrawl.getGraphView(), ids.pick, {}); });
 });
 </script>
 <script src="graphcrawl.js"></script>
