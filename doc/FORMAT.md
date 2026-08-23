@@ -31,12 +31,15 @@ line; `--node -D` prints the count. Nothing of the graph is ever in memory;
 the engine's footprint is its fixed buffers (`c/common.h`), the same for ten
 lines and a trillion.
 
-A click asks for the depth-N neighbourhood of one node: a breadth-first walk
-over children and parents to N-1 hops, each visited node one lookup (two
-with a parents file), every node's line sent whole so the view can draw
-stubs for the neighbours it does not show. Memory is the visited table,
-bounded at `GC_VISIT_MAX` (16384) nodes; past it the walk stops and ends the
-response with a `#cut 16384` line, which the page reports.
+A click asks for the nodes nearest one node: a breadth-first walk over
+children and parents until a budget of N nodes is in hand (`limit=N`),
+within D hops when a cap is given (`depth=D`; the 1999 request was depth
+alone), each visited node one lookup (two with a parents file), every node's
+line sent whole so the view can draw stubs for the neighbours it does not
+show. A graph smaller than the budget comes out whole. Memory is the visited
+table, bounded at `GC_VISIT_MAX` (16384) nodes, the budget's ceiling; a
+walk that stopped at its budget ends the response with a `#cut N` line,
+which the page reports.
 
 Locality is what makes this fast rather than merely possible. Ids near each
 other in value are near each other in the file, and a node's neighbours in

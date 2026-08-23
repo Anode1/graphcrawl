@@ -15,6 +15,33 @@ const Color = {
   yellow: '#ffff00', gray: '#808080', blue: '#0000ff', lightGray: '#c0c0c0'
 };
 
+/* The look. "1999" is the applet's: Dialog 12, square cyan/green/yellow
+ * boxes with a gray border, black edges. "modern" keeps the same meanings
+ * in a current palette: rounded cards, system type, slate edges. Geometry
+ * is the same in both; only paint differs. */
+const Themes = {
+  '1999': {
+    font: '12px sans-serif', rowHeight: 15, descent: 3, pad: 2, radius: 0, shadow: null,
+    background: Color.white, text: Color.black, visitedText: Color.blue,
+    central: { fill: Color.yellow, border: Color.gray },
+    more:    { fill: Color.cyan,   border: Color.gray },    /* has neighbours off screen */
+    done:    { fill: Color.green,  border: Color.gray },    /* every neighbour on screen */
+    edge: Color.black, edgeVisited: Color.blue, arrow: Color.gray, arrowLength: 20,
+    labelFill: Color.white, labelBorder: Color.black
+  },
+  modern: {
+    font: '13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    rowHeight: 18, descent: 4, pad: 6, radius: 6, shadow: 'rgba(0, 0, 0, 0.15)',
+    background: '#fafafa', text: '#374151', visitedText: '#1d4ed8',
+    central: { fill: '#fef3c7', border: '#f59e0b' },
+    more:    { fill: '#dbeafe', border: '#3b82f6' },
+    done:    { fill: '#dcfce7', border: '#22c55e' },
+    edge: '#9ca3af', edgeVisited: '#60a5fa', arrow: '#9ca3af', arrowLength: 14,
+    labelFill: '#ffffff', labelBorder: '#d1d5db'
+  }
+};
+let Theme = Themes.modern;
+
 /* java.awt.Rectangle: what Sprite and the stop bounds use of it */
 class Rect {
   constructor(x, y, w, h) { this.x = x; this.y = y; this.width = w; this.height = h; }
@@ -34,11 +61,33 @@ class Rect {
 class Graphics {
   constructor(ctx, scale) {
     this.ctx = ctx;
-    ctx.font = '12px sans-serif';
+    ctx.font = Theme.font;
     ctx.textBaseline = 'alphabetic';
     ctx.lineWidth = 1 / (scale || 1);
-    this.fm = { height: 15, descent: 3, stringWidth: (s) => Math.ceil(ctx.measureText(s).width) };
-    this.setColor(Color.black);
+    this.fm = { height: Theme.rowHeight, descent: Theme.descent, stringWidth: (s) => Math.ceil(ctx.measureText(s).width) };
+    this.setColor(Theme.text);
+  }
+  /* a rounded box: the modern card; radius 0 is the 1999 rectangle */
+  roundRect(x, y, w, h, r, fill, stroke) {
+    const c = this.ctx;
+    if (r <= 0) {
+      if (fill) c.fillRect(x, y, w, h);
+      if (stroke) c.strokeRect(x + 0.5, y + 0.5, w, h);
+      return;
+    }
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+    if (fill) {
+      if (Theme.shadow) { c.shadowColor = Theme.shadow; c.shadowBlur = 3; c.shadowOffsetY = 1; }
+      c.fill();
+      c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
+    }
+    if (stroke) c.stroke();
   }
   getFontMetrics() { return this.fm; }
   setColor(c) { this.color = c; this.ctx.fillStyle = c; this.ctx.strokeStyle = c; }
@@ -145,8 +194,8 @@ class Sprite {
     this.type = Sprite.RECTANGLE;
     this.image = null; this.grayedImage = null;
     this.imageWidth = 0; this.imageHeight = 0;
-    this.color = Color.cyan;
-    this.borderColor = Color.gray;
+    this.color = Theme.more.fill;
+    this.borderColor = Theme.more.border;
     this.oldx = 0; this.oldy = 0;
   }
   setType(t) { this.type = t; }
@@ -184,9 +233,9 @@ class Sprite {
       const defaultColor = g.getColor();
       g.setColor(this.color);
       if (this.type === Sprite.RECTANGLE) {
-        g.fillRect(this.x - ind, this.y, this.width + ind + ind, this.height);
+        g.roundRect(this.x - ind, this.y, this.width + ind + ind, this.height, Theme.radius, true, false);
         g.setColor(this.borderColor);
-        g.drawRect(this.x - ind, this.y, this.width + ind + ind, this.height);
+        g.roundRect(this.x - ind, this.y, this.width + ind + ind, this.height, Theme.radius, false, true);
       } else {
         g.fillOval(this.x - 1 - ind, this.y, this.width + ind + ind + 2, this.height);
         g.setColor(this.borderColor);
@@ -293,10 +342,10 @@ class WrappedLabel {
   paint(g) {
     const indent = WrappedLabel.indent, row_height = WrappedLabel.row_height;
     const prevColor = g.getColor();
-    if (this.bgColor != null) g.setColor(this.bgColor);
-    g.fillRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height);
-    g.setColor(Color.black);
-    g.drawRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height);
+    g.setColor(this.bgColor != null ? this.bgColor : Theme.labelFill);
+    g.roundRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height, Theme.radius, true, false);
+    g.setColor(Theme.labelBorder);
+    g.roundRect(this.x0 - indent, this.y0, this.width + indent + indent, this.height, Theme.radius, false, true);
     g.setColor(prevColor);
     if (this.dynamic) {
       for (let i = 0; i < this.strings.length; i++) g.drawString(this.strings[i], this.x[i], this.y[i]);
@@ -319,7 +368,7 @@ class NodeView extends Sprite {
     this.showLongLabel = false;
     this.expanded = false;
     this.visited = false;
-    this.notHighligtedColor = NodeView.TERMINAL_COLOR;
+    this.notHighligted = Theme.done;
     this.needReset = true;
     this.shortLabelWidth = -1;
     this.descent = -1;
@@ -349,15 +398,17 @@ class NodeView extends Sprite {
   setLongLabel(b) { this.showLongLabel = b; }
   setHighlighted(h) {
     this.highlighted = h;
-    this.color = h ? NodeView.HIGHLIGHTED_COLOR : this.notHighligtedColor;
+    const c = h ? Theme.central : this.notHighligted;
+    this.color = c.fill;
+    this.borderColor = c.border;
   }
   isHighlighted() { return this.highlighted; }
-  setUsualColor(c) { this.notHighligtedColor = c; }
-  getUsualColor() { return this.notHighligtedColor; }
   isTerminal() { return this.terminal; }
+  /* "terminal" in 1999 was "no children"; here it is "nothing more to show" */
   setTerminal(t) {
     this.terminal = t;
-    this.notHighligtedColor = t ? NodeView.TERMINAL_COLOR : NodeView.DEFAULT_COLOR;
+    this.notHighligted = t ? Theme.done : Theme.more;
+    if (!this.highlighted) { this.color = this.notHighligted.fill; this.borderColor = this.notHighligted.border; }
   }
   resetWrappedLabel() { this.needReset = true; }
   addArriveEventListener(l) { this.listeners.push(l); }
@@ -398,7 +449,7 @@ class NodeView extends Sprite {
   }
   paint(g) {
     const defaultColor = g.getColor();
-    g.setColor(this.visited ? NodeView.VISITED_FONT_COLOR : NodeView.DEFAULT_FONT_COLOR);
+    g.setColor(this.visited ? Theme.visitedText : Theme.text);
     if (this.fm == null) this.init(g);
     const row_height = NodeView.row_height;
     let vertShift = 0;
@@ -420,7 +471,7 @@ class NodeView extends Sprite {
       super.paint(g);
       if (this.image != null) {
         const prevColor = g.getColor();
-        g.setColor(Color.white);
+        g.setColor(Theme.background);
         g.fillRect(horTextPos, this.y + vertShift, this.shortLabelWidth, row_height);
         g.setColor(prevColor);
       }
@@ -437,11 +488,6 @@ class NodeView extends Sprite {
   }
 }
 NodeView.labelViewLength = 15;
-NodeView.DEFAULT_COLOR = Color.cyan;
-NodeView.TERMINAL_COLOR = Color.green;
-NodeView.HIGHLIGHTED_COLOR = Color.yellow;
-NodeView.VISITED_FONT_COLOR = Color.blue;
-NodeView.DEFAULT_FONT_COLOR = Color.black;
 NodeView.gapBetweenLabelAndImage = 2;
 NodeView.row_height = -1;
 
@@ -456,13 +502,13 @@ class Edge {
   paint(g) {
     g.drawLine(this.fromNode.getMiddleX(), this.fromNode.getMiddleY(), this.toNode.getMiddleX(), this.toNode.getMiddleY());
     const defaultColor = g.getColor();
-    g.setColor(Edge.color);
+    g.setColor(Theme.arrow);
     this.drawArrow(g, this.fromNode.getMiddleX(), this.fromNode.getMiddleY(), this.toNode.getMiddleX(), this.toNode.getMiddleY());
     g.setColor(defaultColor);
   }
   drawArrow(g, x0, y0, x, y) {
     const math = AngleMath;
-    const arrowAngle = 30, arrowLength = 20;
+    const arrowAngle = 30, arrowLength = Theme.arrowLength;
     const middlePointX = (x0 + x) >> 1, middlePointY = (y0 + y) >> 1;
     const thisEdgeAngle = Math.trunc(math.atan2(y - y0, x - x0)) + 90;
     const leftSegmentAngle = thisEdgeAngle - (arrowAngle >> 1);
@@ -475,7 +521,7 @@ class Edge {
                   [middlePointY, firstArrowTailY, secondArrowTailY], 3);
   }
 }
-Edge.color = Color.gray;
+Edge.color = Color.gray;     /* the 1999 value; Theme.arrow is what paints */
 
 /* ---- graph/Motor.java: the repaint thread, 100 ms; suspended, it repaints
  * twice more and stops ---- */
@@ -686,8 +732,8 @@ class Parser {
 /* ---- graph/InfoRequestThread.java: fetch the tree, parse it, hand the
  * model to the applet and call dataReady. Stopped requests are ignored. ---- */
 class InfoRequest {
-  constructor(applet, parentID, depth, fromAppletParameters) {
-    this.applet = applet; this.parentID = parentID; this.depth = depth;
+  constructor(applet, parentID, depth, limit, fromAppletParameters) {
+    this.applet = applet; this.parentID = parentID; this.depth = depth; this.limit = limit;
     this.fromAppletParameters = fromAppletParameters;
     this.debug = false;
     this.alive = false;
@@ -720,7 +766,8 @@ class InfoRequest {
     const wid = this.applet.getParameter('wid'), themeId = this.applet.getParameter('themeId');
     if (wid != null) url += '&wid=' + encodeURIComponent(wid);
     if (themeId != null) url += '&ThemeID=' + encodeURIComponent(themeId);
-    url += '&depth=' + this.depth;
+    if (this.depth > 0) url += '&depth=' + this.depth;
+    if (this.limit > 0) url += '&limit=' + this.limit;
     if (this.debug) console.log('GET:' + url);
     this.abort = new AbortController();
     try {
@@ -783,7 +830,9 @@ class GraphView {
     this.motor = new Motor(this);
     this.centralNode = null;
     this.longLabeledNodeView = null;
-    this.depth = parseInt(applet.getParameter('depth') || '2', 10);
+    /* the node budget of one view, and the optional hop cap (0 = none) */
+    this.limit = parseInt(applet.getParameter('limit') || '100', 10);
+    this.depth = parseInt(applet.getParameter('depth') || '0', 10);
     this.CHILD_EDGE_LENGTH = 120;
     this.ELLIPSOIDALITY = 2;
     this.PARENT_EDGE_LENGTH = 120;
@@ -799,7 +848,7 @@ class GraphView {
      * and the view shrinks to hold a deep neighbourhood (doc/PORT.md) */
     this.scale = 1;
     this.fitOnExpand = applet.getParameter('fit') !== 'false';
-    this.fanoutMax = parseInt(applet.getParameter('fanout_max') || '60', 10);
+    this.fanoutMax = parseInt(applet.getParameter('fanout_max') || '0', 10);   /* 0: the budget alone bounds it */
     this.stubsMax = parseInt(applet.getParameter('stubs_max') || '24', 10);
     this.terminalCrawl = applet.getParameter('terminal_crawl') !== 'false';
     /* pixels of arc per neighbour: the circle grows with the count; 0 keeps
@@ -873,7 +922,7 @@ class GraphView {
       this.addNode(node.getID(), this.centralNode);
       this.centralNode.setHighlighted(true);
       this.setState(GraphView.IDLE);
-      this.applet.resetGraphModel(node.id, this.depth);
+      this.applet.resetGraphModel(node.id, this.depth, this.limit);
     } else if (nodeView.isTerminal() && !this.terminalCrawl) {   /* 1999: terminals only show their URL */
       this.deselectAll();
       nodeView.setHighlighted(true);
@@ -888,7 +937,7 @@ class GraphView {
     nodeView.addArriveEventListener(this);
     const v = nodeView.getVelocity(this.bounds().width >> 1, this.bounds().height >> 1, 30);
     this.setV(v);
-    this.applet.resetGraphModel(nodeView.getNodeModel().getID(), this.depth);
+    this.applet.resetGraphModel(nodeView.getNodeModel().getID(), this.depth, this.limit);
   }
   createNode(nodeModel) { return new NodeView(this, nodeModel); }
   expandNode(nodeView) {
@@ -896,34 +945,78 @@ class GraphView {
     this.removeAllButCentral();
     nodeView.expanded = false;
     nodeView.fromAngle = 0;
-    this.expand(nodeView, 1, this.depth);       /* level by level from the model */
+    this.expand(nodeView);                      /* breadth first from the model */
     this.addVisitedNode(nodeView.nodeModel);
     this.centralNode.visited = true;
     this.deselectAll();                         /* hack to walk around a deselection bug */
     nodeView.setHighlighted(true);
     this.motor.suspendThread();
+    this.settle();
+  }
+  /* after any change of the set: colours for the ends, sizes, fit, status */
+  settle() {
+    this.markEnds();
+    if (this.centralNode != null) this.centralNode.setHighlighted(true);
     this.paint();                               /* sizes every new node from its label, moves none */
     if (this.fitOnExpand) this.fitView();
     this.repaint();
     const shown = this.nodes.elements().length, hidden = this.countHidden();
-    this.expandStatus = shown + ' node' + (shown === 1 ? '' : 's') + ' shown, ' + hidden + ' neighbour' +
-      (hidden === 1 ? '' : 's') + ' hidden' + (this.applet.lastCut ? ', walk cut at ' + this.applet.lastCut + ' nodes' : '');
+    const more = this.applet.lastCut || this.cutByLimit;
+    this.expandStatus = shown + ' node' + (shown === 1 ? '' : 's') + ' shown' +
+      (hidden ? ', ' + hidden + ' neighbour' + (hidden === 1 ? '' : 's') + ' beyond' : '') +
+      (more ? ' (the budget of ' + this.limit + '; blue nodes hold more)' : hidden ? '' : ': the whole reachable graph');
     this.applet.showStatus(this.expandStatus);
   }
   expandCentral() { this.expandNode(this.centralNode); }
-  doubleClickOnNode(shift, nodeView) {
+  doubleClickOnNode(mod, nodeView) {
     const nodeModel = nodeView.getNodeModel();
+    if (mod && (mod.alt || mod.ctrl)) {         /* open it where it stands */
+      this.expandInPlace(nodeView);
+      return;
+    }
     this.deselectAll();
     nodeView.setHighlighted(true);
     if (!nodeView.isTerminal() || this.terminalCrawl) this.selectNode(nodeModel);
     else this.motor.suspendThread();
-    if (!shift) this.applet.showUrl(nodeModel);
+    if (!(mod && mod.shift)) this.applet.showUrl(nodeModel);
+  }
+  /* fetch a node's own neighbourhood and add it to the view around the node,
+   * the centre unchanged: the picture grows outward by one click's cost */
+  expandInPlace(nodeView) {
+    const id = nodeView.nodeModel.id;
+    this.motor.resumeThread();
+    this.applet.fetchModel(id, 2, this.limit).then((model) => {
+      const mine = this.applet.getGraphModel();
+      for (const n of model.map.values()) if (mine.getNode(n.id) == null) mine.addNode(n.id, n);
+      const fresh = mine.getNode(id);
+      if (fresh != null && fresh !== nodeView.nodeModel) nodeView.setNodeModel(fresh);
+      if (nodeView.level == null) nodeView.level = 2;
+      this.placeAround(nodeView, nodeView.level, Infinity);
+      this.addVisitedNode(nodeView.nodeModel);
+      nodeView.visited = true;
+      this.motor.suspendThread();
+      this.settle();
+    });
   }
   getDepth() { return this.depth; }
-  setDepth(depth) {
-    this.depth = depth;
-    this.expandNode(this.centralNode);
-    this.repaint();
+  getLimit() { return this.limit; }
+  /* a new budget or hop cap: ask the server again for the central node */
+  setDepth(depth) { this.depth = depth; this.refetch(); }
+  setLimit(limit) { this.limit = limit; this.refetch(); }
+  refetch() {
+    if (this.centralNode == null) return;
+    this.removeAllButCentral();
+    this.applet.resetGraphModel(this.centralNode.nodeModel.id, this.depth, this.limit);
+  }
+  /* green when every neighbour is on screen, blue when crawling here shows
+   * more: the unexpanded ends of the walk */
+  markEnds() {
+    for (const n of this.nodes.elements()) {
+      let hidden = 0;
+      for (const id of n.nodeModel.children) if (this.getNode(id) == null) hidden++;
+      for (const id of n.nodeModel.parents) if (this.getNode(id) == null) hidden++;
+      n.setTerminal(hidden === 0);
+    }
   }
   removeAllButCentral() {
     this.removeAll();
@@ -947,57 +1040,54 @@ class GraphView {
   addVisitedNode(node) { if (this.visitedNodes.indexOf(node.id) < 0) this.visitedNodes.push(node.id); }
   removeAll() { this.nodes = new OrderedHashtable(); }
   setV(vx, vy) { for (const n of this.nodes.elements()) n.setV(vx, vy); }
-  /* build the view from the model recursively, beginning at the node passed */
-  expand(nodeView, level, depth) {
-    if (nodeView.expanded) return;
-    nodeView.expanded = true;
-    const nodeModel = nodeView.getNodeModel();
-    const childrenIds = nodeModel.getChildrenIds().slice();
-    const parentsIds = nodeModel.getParentsIds().slice();
-    const numOfChildren = childrenIds.length, numOfParents = parentsIds.length;
-    if (numOfChildren > 0) nodeView.setTerminal(false);
-    else {
-      nodeView.setTerminal(true);
-      if (numOfParents === 0) return;           /* a single node */
+  /* build the view from the model breadth first, beginning at the node
+   * passed: each node places the neighbours the model holds, parents first
+   * as in 1999, on its circle or sector, until the budget is spent or the
+   * hop cap reached. A neighbour the model lacks is a hidden stub. */
+  expand(root) {
+    const queue = [root];
+    root.level = 1;
+    root.expanded = true;
+    let placed = 1;
+    this.cutByLimit = false;
+    while (queue.length > 0) {
+      const nodeView = queue.shift();
+      if (this.depth > 0 && nodeView.level >= this.depth) continue;
+      const made = this.placeAround(nodeView, nodeView.level, this.limit - placed);
+      placed += made.length;
+      for (const v of made) queue.push(v);
+      if (placed >= this.limit && this.countHidden() > 0) { this.cutByLimit = true; break; }
     }
-    if (level === depth) return;                /* the boundary level */
-    /* at most fanoutMax of each list get a view, fewer the deeper the level;
-     * the rest stay hidden stubs */
-    const most = level === 1 ? this.fanoutMax : Math.max(6, Math.trunc(this.fanoutMax / (level * 2)));
-    const showP = Math.min(numOfParents, most), showC = Math.min(numOfChildren, most);
-    let angleBetween;
+  }
+  /* place the neighbours of NODEVIEW that the model holds and the view does
+   * not, at most BUDGET of them, with the 1999 angles; returns them */
+  placeAround(nodeView, level, budget) {
+    const model = this.applet.getGraphModel(), nodeModel = nodeView.getNodeModel();
+    const toPlace = [], made = [];
+    for (const id of nodeModel.getParentsIds())
+      if (this.getNode(id) == null && model.getNode(id) != null) toPlace.push({ id: id, parent: true });
+    for (const id of nodeModel.getChildrenIds())
+      if (this.getNode(id) == null && model.getNode(id) != null) toPlace.push({ id: id, parent: false });
+    if (toPlace.length === 0 || budget <= 0) return made;
+    /* fanout_max, when set, caps one node's ring; fewer the deeper the level */
+    const most = this.fanoutMax > 0
+      ? (level === 1 ? this.fanoutMax : Math.max(6, Math.trunc(this.fanoutMax / (level * 2)))) : toPlace.length;
+    const count = Math.min(toPlace.length, most, budget);
     const sector = level === 1 ? 360 : this.SECTOR_FOR_NEIGHBOURS;
-    angleBetween = Math.trunc(sector / (showC + showP));
+    const angleBetween = Math.trunc(sector / count);
     /* the radius that gives each neighbour `spread` pixels of arc */
-    let arc = Math.trunc((showC + showP) * this.spread * 360 / (sector * 2 * Math.PI));
+    let arc = Math.trunc(count * this.spread * 360 / (sector * 2 * Math.PI));
     if (level > 1) arc = Math.min(arc, 3 * this.CHILD_EDGE_LENGTH);    /* a sector, not a ring */
-    const parentLength = Math.max(this.PARENT_EDGE_LENGTH, arc);
-    const childLength = Math.max(this.CHILD_EDGE_LENGTH, arc);
-    let n = 0;
-    for (; n < showP; n++) {
-      const aParentId = parentsIds[n];
-      let aParent = this.getNode(aParentId);
-      if (aParent == null) {
-        aParent = this.createNeighbour(nodeView, aParentId, n, angleBetween, parentLength);
-        this.addNode(aParentId, aParent);
-      }
+    for (let i = 0; i < count; i++) {
+      const t = toPlace[i];
+      if (this.getNode(t.id) != null) continue;
+      const length = Math.max(t.parent ? this.PARENT_EDGE_LENGTH : this.CHILD_EDGE_LENGTH, arc);
+      const view = this.createNeighbour(nodeView, t.id, i, angleBetween, length);
+      view.level = level + 1;
+      view.expanded = true;
+      made.push(view);
     }
-    for (let j = 0; j < showC; j++, n++) {
-      const aChildId = childrenIds[j];
-      let aChild = this.getNode(aChildId);
-      if (aChild == null) {
-        aChild = this.createNeighbour(nodeView, aChildId, n, angleBetween, childLength);
-        this.addNode(aChildId, aChild);
-      }
-    }
-    for (let i = 0; i < numOfParents; i++) {
-      const aParent = this.getNode(parentsIds[i]);
-      if (aParent != null) this.expand(aParent, level + 1, depth);
-    }
-    for (let i = 0; i < numOfChildren; i++) {
-      const aChild = this.getNode(childrenIds[i]);
-      if (aChild != null) this.expand(aChild, level + 1, depth);
-    }
+    return made;
   }
   /* a neighbour placed on the sector around its parent node view */
   createNeighbour(parentNodeView, aChildId, i, angleBetween, edgeLength) {
@@ -1050,9 +1140,9 @@ class GraphView {
     const ctx = this.ctx, w = this.size().width, h = this.size().height;
     ctx.setTransform(this.dpr * this.scale, 0, 0, this.dpr * this.scale, 0, 0);
     const g = new Graphics(ctx, this.scale);
-    g.setColor(Color.white);
+    g.setColor(Theme.background);
     g.fillRect(0, 0, w, h);
-    g.setColor(Color.black);
+    g.setColor(Theme.edge);
     if (this.applet.isWaitingForServer()) this.animation.paint(g, w, h);
     this.paintEdges(g);
     this.paintNodes(g);
@@ -1071,9 +1161,9 @@ class GraphView {
       const child = this.getNode(aChildId);
       if (child == null) numberOfHidden++;
       else {
-        if (child.visited) g.setColor(Color.blue);
+        if (child.visited) g.setColor(Theme.edgeVisited);
         g.drawLine(nodeView.getMiddleX(), nodeView.getMiddleY(), child.getMiddleX(), child.getMiddleY());
-        if (child.visited) g.setColor(Color.black);
+        if (child.visited) g.setColor(Theme.edge);
       }
     }
     if (numberOfHidden === 0) return;
@@ -1119,7 +1209,7 @@ class GraphView {
       e.preventDefault();
       c.setPointerCapture(e.pointerId);
       const p = at(e);
-      this.mouseDown(e.shiftKey, p.x, p.y);
+      this.mouseDown({ shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey }, p.x, p.y);
     });
     c.addEventListener('pointermove', (e) => {
       const p = at(e);
@@ -1133,7 +1223,8 @@ class GraphView {
     c.addEventListener('pointerup', (e) => { const p = at(e); this.mouseUp(e.shiftKey, p.x, p.y); });
     c.addEventListener('pointercancel', (e) => { const p = at(e); this.mouseUp(e.shiftKey, p.x, p.y); });
   }
-  mouseDown(shift, x, y) {
+  mouseDown(mod, x, y) {
+    if (typeof mod !== 'object' || mod == null) mod = { shift: !!mod };
     this.motor.resumeThread();
     const nodeView = this.getContains(x, y);
     if (nodeView != null) {
@@ -1144,7 +1235,7 @@ class GraphView {
       }
       const click = Date.now();
       if (click - this.prevClick < this.deltaBetweenClicks) {
-        this.doubleClickOnNode(shift, nodeView);
+        this.doubleClickOnNode(mod, nodeView);
       } else {
         this.prevClick = click;
         nodeView.oldx = x; nodeView.oldy = y;
@@ -1224,11 +1315,12 @@ class ToolsPanel {
     this.history = new History();
     this.depth_choice = depthChoice;
     this.history_choice = historyChoice;
-    const depthMax = parseInt(applet.getParameter('depth_max') || '6', 10);
+    const depthMax = parseInt(applet.getParameter('depth_max') || '8', 10);
     depthChoice.textContent = '';
-    for (let d = 1; d <= depthMax; d++) {
+    for (let d = 0; d <= depthMax; d++) {
       const o = document.createElement('option');
-      o.textContent = String(d);
+      o.value = String(d);
+      o.textContent = d === 0 ? 'any' : String(d);
       if (d === applet.getGraphView().getDepth()) o.selected = true;
       depthChoice.appendChild(o);
     }
@@ -1236,6 +1328,23 @@ class ToolsPanel {
       const depth = parseInt(depthChoice.value, 10);
       if (!isNaN(depth)) applet.getGraphView().setDepth(depth);
     });
+    const limitChoice = root.querySelector('#limit');
+    if (limitChoice) {
+      const steps = [10, 25, 50, 100, 200, 500, 1000, 2000, 5000];
+      const cur = applet.getGraphView().getLimit();
+      if (steps.indexOf(cur) < 0) { steps.push(cur); steps.sort((a, b) => a - b); }
+      limitChoice.textContent = '';
+      for (const n of steps) {
+        const o = document.createElement('option');
+        o.textContent = String(n);
+        if (n === cur) o.selected = true;
+        limitChoice.appendChild(o);
+      }
+      limitChoice.addEventListener('change', () => {
+        const n = parseInt(limitChoice.value, 10);
+        if (!isNaN(n)) applet.getGraphView().setLimit(n);
+      });
+    }
     const goto = root.querySelector('#goto'), find = root.querySelector('#find');
     const back = root.querySelector('#back'), results = root.querySelector('#results');
     this.results = results;
@@ -1343,19 +1452,19 @@ class NavigatorApplet {
     if (s != null && (s === 'true' || s === 'yes')) this.staticApplet = true;
     const keywordid = this.getParameter('first_node');
     if (keywordid == null) console.log('first_node is null');
-    this.resetGraphModel(keywordid, this.graphView.getDepth());
+    this.resetGraphModel(keywordid, this.graphView.getDepth(), this.graphView.getLimit());
   }
   start() { this.graphView.getMotor().start(); }
   stop() { this.graphView.getMotor().stop(); }
   setGraphModel(m) { this.graphModel = m; }
   /* refill the cache from the server (or the parameters) */
-  resetGraphModel(keywordid, depth) {
+  resetGraphModel(keywordid, depth, limit) {
     if (this.staticApplet && this.graphModel != null && this.initialized) return;
     if (keywordid != null && location.hash.slice(1) !== encodeURIComponent(keywordid))
       history.pushState(null, '', '#' + encodeURIComponent(keywordid));
     this.setWaitingForServer(true);
     if (this.communicationThread != null) this.communicationThread.stop();
-    this.communicationThread = new InfoRequest(this, keywordid, depth, this.fromAppletParameters);
+    this.communicationThread = new InfoRequest(this, keywordid, depth, limit || 0, this.fromAppletParameters);
     this.communicationThread.setDebug(this.debug);
     this.communicationThread.start();
   }
@@ -1392,6 +1501,25 @@ class NavigatorApplet {
   }
   getGraphView() { return this.graphView; }
   getGraphModel() { return this.graphModel; }
+  /* a neighbourhood on its own, for expanding in place: the model of the
+   * server's answer (or of the line_N parameters), the view untouched */
+  async fetchModel(id, depth, limit) {
+    const parser = new Parser();
+    if (this.fromAppletParameters) {
+      for (let i = 0; this.getParameter('line_' + i) != null; i++) parser.parseLine(this.getParameter('line_' + i));
+      return parser.getGraphModel();
+    }
+    const cgi = this.getParameter('cgi');
+    let url = cgi + (cgi.indexOf('?') < 0 ? '?' : '&') + 'keywordid=' + encodeURIComponent(id);
+    if (depth > 0) url += '&depth=' + depth;
+    if (limit > 0) url += '&limit=' + limit;
+    this.showStatus('Getting information from the server');
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      for (const line of (await r.text()).split('\n')) if (line.length > 0) parser.parseLine(line.replace(/\r$/, ''));
+    } catch (e) { this.showStatus('request failed: ' + e); }
+    return parser.getGraphModel();
+  }
   /* crawl to an id typed, searched or taken from the URL */
   goTo(id) {
     if (!this.initialized) { this.params.first_node = id; return; }
@@ -1445,8 +1573,12 @@ class NavigatorApplet {
 window.addEventListener('DOMContentLoaded', async () => {
   const params = window.GRAPHCRAWL_PARAMS || {};
   if (location.hash.length > 1) params.first_node = decodeURIComponent(location.hash.slice(1));
-  const q = new URLSearchParams(location.search);      /* ?depth=4 overrides the page */
-  if (q.get('depth')) params.depth = q.get('depth');
+  const q = new URLSearchParams(location.search);      /* ?depth=4&limit=50&style=1999 override the page */
+  for (const k of ['depth', 'limit', 'style']) if (q.get(k)) params[k] = q.get(k);
+  Theme = Themes[params.style] || Themes.modern;
+  Sprite.indent = Theme.pad;
+  WrappedLabel.indent = Theme.pad;
+  document.documentElement.dataset.style = Themes[params.style] ? params.style : 'modern';
   if (params.cgi != null && params.line_0 == null) {
     try {
       const t = await (await fetch('/api/info', { cache: 'no-store' })).text();

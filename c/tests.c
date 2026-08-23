@@ -127,18 +127,18 @@ int main(void)
     {
         struct collect c = { {0}, 0 };
         int cut;
-        CHECK(gc_neighbourhood(&g, 0, 1, collect_cb, &c, &cut) == 1 && c.ids[0] == 0);
+        CHECK(gc_neighbourhood(&g, 0, 1, 0, collect_cb, &c, &cut) == 1 && c.ids[0] == 0);
         c.n = 0;
-        CHECK(gc_neighbourhood(&g, 0, 2, collect_cb, &c, &cut) == 3);
+        CHECK(gc_neighbourhood(&g, 0, 2, 0, collect_cb, &c, &cut) == 3);
         CHECK(c.ids[0] == 0 && c.ids[1] == 1 && c.ids[2] == 2 && cut == 0);
         /* depth 3 reaches the grandparents; id 16 is dangling and skipped */
         c.n = 0;
-        CHECK(gc_neighbourhood(&g, 0, 3, collect_cb, &c, &cut) == 7);
+        CHECK(gc_neighbourhood(&g, 0, 3, 0, collect_cb, &c, &cut) == 7);
         c.n = 0;
         /* 7 lists 15 and 16; 16 has no line and is skipped */
-        CHECK(gc_neighbourhood(&g, 7, 2, collect_cb, &c, &cut) == 2);
+        CHECK(gc_neighbourhood(&g, 7, 2, 0, collect_cb, &c, &cut) == 2);
         /* an absent centre is -1 */
-        CHECK(gc_neighbourhood(&g, 77, 2, collect_cb, &c, &cut) == -1);
+        CHECK(gc_neighbourhood(&g, 77, 2, 0, collect_cb, &c, &cut) == -1);
     }
 
     /* check: the fixture passes */
@@ -159,7 +159,7 @@ int main(void)
     {
         struct collect c = { {0}, 0 };
         int cut;
-        CHECK(gc_neighbourhood(&g, 3, 2, collect_cb, &c, &cut) == 5);
+        CHECK(gc_neighbourhood(&g, 3, 2, 0, collect_cb, &c, &cut) == 5);
     }
     gc_close(&g);
 
@@ -212,7 +212,7 @@ int main(void)
         {
             struct collect c = { {0}, 0 };
             int cut;
-            CHECK(gc_neighbourhood(&g, 30000, 3, collect_cb, &c, &cut) == 5);
+            CHECK(gc_neighbourhood(&g, 30000, 3, 0, collect_cb, &c, &cut) == 5);
         }
         gc_close(&g);
     }
@@ -226,7 +226,7 @@ int main(void)
     {
         struct collect c = { {0}, 0 };
         int cut;
-        CHECK(gc_neighbourhood(&g, 3, 2, collect_cb, &c, &cut) == 3);
+        CHECK(gc_neighbourhood(&g, 3, 2, 0, collect_cb, &c, &cut) == 3);
     }
     gc_close(&g);
 

@@ -178,7 +178,7 @@ static void api_node(struct gc_graph *g, int fd, const char *query)
 {
     char v[64];
     long long id;
-    int depth = 2, cut, n;
+    int depth = -1, limit = 0, cut, n;
 
     if (!query_get(query, "keywordid", v, sizeof v) &&
         !query_get(query, "id", v, sizeof v)) {
@@ -191,14 +191,19 @@ static void api_node(struct gc_graph *g, int fd, const char *query)
     }
     if (query_get(query, "depth", v, sizeof v))
         depth = atoi(v);
+    if (query_get(query, "limit", v, sizeof v))
+        limit = atoi(v);
+    if (depth < 0)                        /* the 1999 request: depth 2 and no budget */
+        depth = limit > 0 ? 0 : 2;
     send_head(fd, "text/plain; charset=utf-8");
-    n = gc_neighbourhood(g, id, depth, emit_line, &fd, &cut);
+    n = gc_neighbourhood(g, id, depth, limit, emit_line, &fd, &cut);
     if (cut) {
         char t[64];
-        int k = snprintf(t, sizeof t, "#cut %d\n", GC_VISIT_MAX);
+        int k = snprintf(t, sizeof t, "#cut %d\n",
+                         limit > 0 && limit < GC_VISIT_MAX ? limit : GC_VISIT_MAX);
         write_all(fd, t, (size_t)k);        /* a trailer the page reports */
     }
-    debug("node %lld depth %d: %d lines%s", id, depth, n, cut ? " (cut)" : "");
+    debug("node %lld depth %d limit %d: %d lines%s", id, depth, limit, n, cut ? " (cut)" : "");
 }
 
 static void api_find(struct gc_graph *g, int fd, const char *query)

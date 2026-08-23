@@ -1,21 +1,36 @@
 /* graphcrawl.css -- the 1999 frameset: applet left, content frame right.
- * The applet panel is white, the tools panel light gray, as AWT drew them. */
-html, body { height: 100%; margin: 0; background: #ffffff; color: #000000;
-  font: 12px sans-serif; }
+ * The modern chrome follows kul's tokens (system type, 6 px radius, slate
+ * palette); [data-style="1999"] is the AWT gray. */
+html, body { height: 100%; margin: 0; background: #fafafa; color: #374151;
+  font: 13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 body { display: flex; }
 #applet { flex: 0 0 60%; display: flex; flex-direction: column; min-width: 300px;
-  resize: horizontal; overflow: hidden; border-right: 1px solid #808080; }
+  resize: horizontal; overflow: hidden; border-right: 1px solid #e5e7eb; }
 #graph { flex: 1 1 auto; width: 100%; min-height: 0; display: block;
   cursor: default; touch-action: none; user-select: none; }
-#tools { flex: 0 0 auto; background: #c0c0c0; padding: 5px; display: flex;
-  gap: 10px; align-items: center; flex-wrap: wrap; }
-#tools label { display: flex; gap: 4px; align-items: center; }
-#history { min-width: 100px; }
-#hint { color: #404040; }
-#status { flex: 0 0 auto; min-height: 1.2em; padding: 2px 5px; background: #c0c0c0;
-  border-top: 1px solid #808080; }
-iframe[name=content] { flex: 1 1 auto; border: 0; min-width: 0; }
-#tools input { font: inherit; }
-#results { flex: 0 0 auto; max-height: 8em; overflow-y: auto; margin: 0; padding: 2px 5px 2px 20px;
-  background: #ffffff; border-top: 1px solid #808080; }
-#results a { color: #0000ff; }
+#tools { flex: 0 0 auto; background: #f3f4f6; border-top: 1px solid #e5e7eb; padding: 6px 8px;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+#tools label { display: flex; gap: 5px; align-items: center; color: #4b5563; }
+#tools select, #tools input, #tools button { font: inherit; color: #1f2937; background: #ffffff;
+  border: 1px solid #d1d5db; border-radius: 6px; padding: 3px 6px; }
+#tools button { cursor: pointer; }
+#tools button:hover { background: #f9fafb; }
+#history { min-width: 110px; }
+#hint { color: #6b7280; font-size: 12px; }
+#status { flex: 0 0 auto; min-height: 1.2em; padding: 4px 8px; background: #f3f4f6;
+  border-top: 1px solid #e5e7eb; color: #4b5563; font-size: 12px; }
+iframe[name=content] { flex: 1 1 auto; border: 0; min-width: 0; background: #ffffff; }
+#results { flex: 0 0 auto; max-height: 8em; overflow-y: auto; margin: 0; padding: 4px 8px 4px 24px;
+  background: #ffffff; border-top: 1px solid #e5e7eb; }
+#results a { color: #1d4ed8; text-decoration: none; }
+#results a:hover { text-decoration: underline; }
+
+/* the 1999 chrome */
+[data-style="1999"] body, [data-style="1999"] { background: #ffffff; color: #000000; font: 12px sans-serif; }
+[data-style="1999"] #applet { border-right: 1px solid #808080; }
+[data-style="1999"] #tools, [data-style="1999"] #status { background: #c0c0c0; border-top: 1px solid #808080; color: #000000; }
+[data-style="1999"] #tools label { color: #000000; }
+[data-style="1999"] #tools select, [data-style="1999"] #tools input, [data-style="1999"] #tools button {
+  border-radius: 0; border: 1px solid #808080; }
+[data-style="1999"] #hint { color: #404040; }
+[data-style="1999"] #results a { color: #0000ff; }

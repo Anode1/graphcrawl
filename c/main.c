@@ -3,8 +3,8 @@
  * Copyright (C) 1999, 2026 Vasili Gavrilov. GNU GPL v2 or later.
  *
  *   graphcrawl FILE                      serve FILE on 127.0.0.1 and open it
- *   graphcrawl FILE --node ID [-d N]     the depth-N neighbourhood of ID, as
- *                                        the server would send it
+ *   graphcrawl FILE --node ID [-l N] [-d D]   the N nodes nearest ID (D hops
+ *                                        at most), as the server sends them
  *   graphcrawl FILE --info | --check | --reverse
  */
 #ifndef UNIT_TEST
@@ -35,7 +35,8 @@ static const char usage[] =
 "  -n, --node ID     print the neighbourhood of ID and exit (-D adds the\n"
 "                    number of lines the binary searches read)\n"
 "  -f, --find TEXT   print up to 50 nodes whose label holds TEXT (a full scan)\n"
-"  -d, --depth N     view depth for --node (2)\n"
+"  -l, --limit N     node budget for --node: the nearest N, breadth first\n"
+"  -d, --depth N     hop cap for --node; 0 is none (2 without --limit)\n"
 "  -p, --port PORT   listen port (8090)\n"
 "      --no-open     do not launch a browser (also: GRAPHCRAWL_NO_OPEN=1)\n"
 "      --info        first id, last id, size\n"
@@ -68,6 +69,7 @@ int main(int argc, char **argv)
     static const struct option longopts[] = {
         { "node",    required_argument, 0, 'n' },
         { "depth",   required_argument, 0, 'd' },
+        { "limit",   required_argument, 0, 'l' },
         { "port",    required_argument, 0, 'p' },
         { "no-open", no_argument,       0, 'N' },
         { "info",    no_argument,       0, 'I' },
@@ -82,9 +84,9 @@ int main(int argc, char **argv)
     struct gc_graph g;
     long long id = 0;
     const char *text = "";
-    int depth = 2, port = 8090, open_browser = 1, c;
+    int depth = -1, limit = 0, port = 8090, open_browser = 1, c;
 
-    while ((c = getopt_long(argc, argv, "n:d:p:f:Dh", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "n:d:l:p:f:Dh", longopts, NULL)) != -1) {
         switch (c) {
         case 'n':
             if (gc_line_id(optarg, &id) != 0)
@@ -92,6 +94,7 @@ int main(int argc, char **argv)
             cmd = CMD_NODE;
             break;
         case 'd': depth = atoi(optarg); break;
+        case 'l': limit = atoi(optarg); break;
         case 'p': port = atoi(optarg); break;
         case 'N': open_browser = 0; break;
         case 'I': cmd = CMD_INFO; break;
@@ -114,8 +117,12 @@ int main(int argc, char **argv)
         fputs(usage, stderr);
         return 2;
     }
-    if (depth < 1 || depth > GC_DEPTH_MAX)
-        die("--depth: 1..%d", GC_DEPTH_MAX);
+    if (depth < 0)
+        depth = limit > 0 ? 0 : 2;
+    if (depth > GC_DEPTH_MAX)
+        die("--depth: 0..%d", GC_DEPTH_MAX);
+    if (limit < 0 || limit > GC_VISIT_MAX)
+        die("--limit: 1..%d", GC_VISIT_MAX);
     if (gc_open(&g, argv[optind]) != 0)
         die("cannot open %s", argv[optind]);
     if (getenv("GRAPHCRAWL_NO_OPEN") != NULL)
@@ -123,11 +130,11 @@ int main(int argc, char **argv)
 
     switch (cmd) {
     case CMD_NODE: {
-        int cut, n = gc_neighbourhood(&g, id, depth, emit_stdout, NULL, &cut);
+        int cut, n = gc_neighbourhood(&g, id, depth, limit, emit_stdout, NULL, &cut);
         if (n < 0)
             die("no node %lld in %s", id, g.path);
         if (cut)
-            fprintf(stderr, "graphcrawl: neighbourhood cut at %d nodes\n", GC_VISIT_MAX);
+            fprintf(stderr, "graphcrawl: more nodes beyond the %d shown\n", n);
         debug("%d nodes, %ld lines read by the binary searches", n, gc_probes());
         break;
     }

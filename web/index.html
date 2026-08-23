@@ -10,12 +10,13 @@
 <div id="applet">
   <canvas id="graph"></canvas>
   <div id="tools">
-    <label>Tree Depth <select id="depth"><option>2</option><option>3</option></select></label>
+    <label>Nodes <select id="limit"></select></label>
+    <label>Depth <select id="depth"></select></label>
     <label>History <select id="history"></select></label>
     <button id="back" title="the previous node">Back</button>
     <label>Go to id <input id="goto" size="10"></label>
     <label>Find <input id="find" size="14" placeholder="label text"></label>
-    <span id="hint">double-click a node to crawl to it, drag a node, drag the background to pan, wheel to zoom, hover for the full label, shift+double-click keeps the content frame</span>
+    <span id="hint">double-click a node to crawl to it; Alt or Ctrl with it opens the node where it stands. Green: everything around it is on screen, blue: more there. Drag a node, drag the background to pan, wheel to zoom, hover for the full label, Shift keeps the content frame</span>
   </div>
   <ul id="results" hidden></ul>
   <div id="status"></div>

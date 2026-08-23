@@ -20,7 +20,7 @@
 
 <script>
 window.GRAPHCRAWL_PARAMS = {
-  first_node: "0", delay_ms: "1000", iconFromX: "30", iconFromY: "30",
+  first_node: "0", depth: "2", limit: "100", delay_ms: "1000", iconFromX: "30", iconFromY: "30",
   ovals_min_id: "-600", ovals_max_id: "-214",
   category_icon_1: "minus.gif", category_icon_2: "exclaim.gif", category_icon_3: "external.gif",
   category_icon_4: "plus.gif", category_icon_5: "query.gif",
@@ -57,6 +57,21 @@ window.addEventListener('DOMContentLoaded', function () {
     var nv = gv.getNode('3');
     if (nv) gv.mouseMove(false, nv.getMiddleX(), nv.getMiddleY());
   }, 6000);
+  /* Alt+double-click on grandfather(father): its parents 9 and 10 join the
+   * view around it, the centre stays father */
+  setTimeout(function () {
+    var gv = window.graphcrawl.getGraphView();
+    var nv = gv.getNode('4');
+    if (!nv) { say('no grandfather'); return; }
+    var x = nv.getMiddleX(), y = nv.getMiddleY(), mod = { alt: true };
+    gv.mouseMove(false, -1, -1);
+    gv.mouseDown(mod, x, y); gv.mouseUp(false, x, y);
+    gv.mouseDown(mod, x, y); gv.mouseUp(false, x, y);
+  }, 8000);
+  setTimeout(function () {
+    var gv = window.graphcrawl.getGraphView();
+    say('after in-place: nodes=' + gv.nodes.elements().length + ' central=' + gv.getCentralNode().nodeModel.label);
+  }, 10000);
 });
 </script>
 <script src="graphcrawl.js"></script>

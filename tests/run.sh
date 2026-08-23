@@ -40,6 +40,15 @@ eq "node: an absent id fails"        "1" "$("$GC" --node 999999 "$T/g.txt" >/dev
 eq "node: the first id works"        "0;node 0 " "$("$GC" --node 0 -d 1 "$T/g.txt" | cut -c1-9)"
 eq "node: the last id works"         "4999;" "$("$GC" --node 4999 -d 1 "$T/g.txt" | cut -c1-5)"
 
+# --- a node budget: the nearest N, breadth first; a small graph comes out whole
+eq "limit 1 is the node"             "1" "$("$GC" --node 100 -l 1 "$T/g.txt" | wc -l | tr -d ' ')"
+eq "limit 20 gives 20 lines"         "20" "$("$GC" --node 100 -l 20 "$T/g.txt" | wc -l | tr -d ' ')"
+ok "limit reports the cut"           "more nodes beyond the 20" "$("$GC" --node 100 -l 20 "$T/g.txt" 2>&1 >/dev/null)"
+printf '1;;;;2,3;\n2;;;;4;\n3\n4\n' > "$T/small.txt"
+eq "a small graph comes out whole"   "4" "$("$GC" --node 1 -l 100 "$T/small.txt" | wc -l | tr -d ' ')"
+eq "... with no cut"                 "" "$("$GC" --node 1 -l 100 "$T/small.txt" 2>&1 >/dev/null)"
+eq "limit and depth together"        "3" "$("$GC" --node 1 -l 100 -d 2 "$T/small.txt" | wc -l | tr -d ' ')"
+
 # --- the parents side-file built by --reverse + sort, read back into the lines
 awk -F';' '{print $1";"$2";"$3";"$4";"$5";"}' "$T/g.txt" > "$T/np.txt"   # strip parents
 eq "stripped file has no parents"    "" "$("$GC" --node 100 -d 1 "$T/np.txt" | cut -d';' -f6)"
@@ -95,6 +104,8 @@ eq "GET /minus.gif is a GIF"         "GIF89a" "$(curl -s "$B/minus.gif" | head -
 ok "GET /api/info"                   "last=4999" "$(curl -s "$B/api/info")"
 eq "GET /api/node matches the CLI"   "$N2" "$(curl -s "$B/api/node?keywordid=100&depth=2")"
 ok "GET /api/node accepts id="       "100;node 100 " "$(curl -s "$B/api/node?id=100")"
+eq "GET /api/node with a limit"      "12" "$(curl -s "$B/api/node?keywordid=100&limit=12" | grep -vc '^#')"
+ok "... ends with the cut trailer"   "#cut 12" "$(curl -s "$B/api/node?keywordid=100&limit=12" | tail -1)"
 ok "GET /api/node of an absent id is empty" "" "$(curl -s "$B/api/node?keywordid=999999")"
 ok "GET /api/find"                   "quartz" "$(curl -s "$B/api/find?q=quartz" | head -1)"
 eq "GET /api/find without q is 404"  "404" "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/find")"

@@ -72,16 +72,25 @@ behaviour as one of its values (the table at the end).
 
 | parameter | default | 1999 value | what |
 | --- | --- | --- | --- |
-| `depth` | 2 | 2 | the starting depth; `?depth=N` in the URL overrides |
-| `depth_max` | 6 | 3 | the last entry of the Tree Depth choice (the server stops at 8) |
+| `limit` | 100 | none | the node budget: the server walks breadth first from the centre until this many nodes are in hand (`&limit=` on the request); a small graph comes out whole. The Nodes choice; `?limit=N` in the URL overrides |
+| `depth` | 0 (any) | 2 | an optional hop cap on top of the budget; `?depth=N` overrides |
+| `depth_max` | 8 | 3 | the last entry of the Depth choice (the server stops at 8) |
+| `style` | modern | 1999 | the look: `modern` is rounded cards, system type and a slate palette after kul's tokens; `1999` is the applet's paint and chrome. Geometry is identical; `?style=1999` in the URL |
 | `fit` | true | false | after an expansion, zoom out until every node is on the canvas; the wheel zooms, dragging the background pans; nodes keep their 1999 coordinates, the world box is the canvas divided by the zoom |
-| `spread` | 40 | 0 | pixels of arc per neighbour: the circle's radius grows past 120 px so labels do not pile up on a hub |
-| `fanout_max` | 60 | unlimited | neighbours of one node given a view; the rest are hidden stubs with a `+N` |
+| `spread` | 40 | 0 | pixels of arc per neighbour: the circle's radius grows past 120 px so labels do not pile up on a hub; a sector's radius stops at 360 px |
+| `fanout_max` | 0 (the budget) | unlimited | neighbours of one node given a view, fewer per deeper level when set; the rest are hidden stubs with a `+N` |
 | `stubs_max` | 24 | unlimited | stubs drawn per node; the rest is the `+N` |
 | `terminal_crawl` | true | false | double-click crawls into a node without children too; in 1999 a terminal only showed its URL |
+| ends | | children or none | the colour now says whether the view is complete around a node: green when every neighbour is on screen, blue (cyan in 1999 paint) when crawling or expanding there shows more. In 1999 green meant "no children" |
+| expand in place | | absent | Alt or Ctrl with the double-click fetches that node's own neighbourhood (`depth=2`, the budget) and places it around the node, the centre unchanged; the view may then exceed the budget, and the status says so |
 | Go to id, Find, Back | | absent | the id box re-centres; Find asks `/api/find` (or searches the `line_N` parameters) and lists links; Back is the browser's |
-| status line | | "Getting information from the server" only | nodes shown and neighbours hidden after an expansion; the node under the mouse with its counts; the walk's cut |
+| status line | | "Getting information from the server" only | nodes shown and neighbours beyond after an expansion, whether the budget cut the walk, or that the whole reachable graph is on screen; the node under the mouse with its counts |
 
-The expansion sizes every node with one paint before the fit, because the
-1999 `update()` clamps nodes into the panel and would pull a spilled
-neighbourhood to the borders before the view had a chance to zoom out.
+Placement is breadth first over the model (`expand`, `placeAround`): each
+node places the neighbours the model holds, parents first as in 1999, on
+its circle or sector, with the 1999 angles. The 1999 `expand` recursed
+depth first and made a dummy "label id=X" node for an id the model lacked;
+such an id is now a stub. The expansion sizes every node with one paint
+before the fit, because the 1999 `update()` clamps nodes into the panel and
+would pull a spilled neighbourhood to the borders before the view had a
+chance to zoom out.

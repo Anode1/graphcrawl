@@ -60,10 +60,13 @@ int gc_search(struct gc_graph *g, const char *text, int max,
  * non-numeric or out-of-order line. */
 int gc_group(FILE *in, FILE *out, FILE *report);
 
-/* Every node within DEPTH-1 hops of ID over children and parents, breadth
- * first, ID first, each handed to EMIT. Returns the count, -1 if ID is
- * absent. A frontier past GC_VISIT_MAX nodes is cut, and *CUT says so. */
-int gc_neighbourhood(struct gc_graph *g, long long id, int depth,
+/* The nodes nearest ID, breadth first over children and parents, ID first,
+ * each handed to EMIT with its full lists: at most LIMIT nodes (capped at
+ * GC_VISIT_MAX), and within DEPTH-1 hops when DEPTH is not 0. A small graph
+ * comes out whole; a large one stops at the budget and *CUT says so, the
+ * unexpanded frontier showing as neighbours the view does not hold.
+ * Returns the count, -1 if ID is absent. */
+int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
                      gc_emit_fn emit, void *ctx, int *cut);
 
 /* First and last ids in the file. 0 ok, -1 if the file has no node line. */

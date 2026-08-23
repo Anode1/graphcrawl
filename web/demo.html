@@ -11,12 +11,13 @@
 <div id="applet">
   <canvas id="graph"></canvas>
   <div id="tools">
-    <label>Tree Depth <select id="depth"><option>2</option><option>3</option></select></label>
+    <label>Nodes <select id="limit"></select></label>
+    <label>Depth <select id="depth"></select></label>
     <label>History <select id="history"></select></label>
     <button id="back" title="the previous node">Back</button>
     <label>Go to id <input id="goto" size="10"></label>
     <label>Find <input id="find" size="14" placeholder="label text"></label>
-    <span id="hint">double-click a node to crawl to it, drag the background to pan, wheel to zoom, hover for the full label</span>
+    <span id="hint">double-click a node to crawl to it, Alt+double-click opens it in place, drag the background to pan, wheel to zoom, hover for the full label</span>
   </div>
   <ul id="results" hidden></ul>
   <div id="status"></div>
@@ -26,6 +27,7 @@
 <script>
 window.GRAPHCRAWL_PARAMS = {
   first_node: "0",
+  limit: "12",
   static_version: "false",
   delay_ms: "1000",
   iconFromX: "30",

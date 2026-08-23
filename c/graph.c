@@ -290,7 +290,7 @@ static int walk_add(struct walk *w, long long id, int level)
     return 1;
 }
 
-int gc_neighbourhood(struct gc_graph *g, long long id, int depth,
+int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
                      gc_emit_fn emit, void *ctx, int *cut)
 {
     struct walk w;
@@ -298,10 +298,12 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth,
     int head = 0, emitted = 0;
 
     *cut = 0;
-    if (depth < 1)
-        depth = 1;
+    if (depth < 0)
+        depth = 0;
     if (depth > GC_DEPTH_MAX)
         depth = GC_DEPTH_MAX;
+    if (limit < 1 || limit > GC_VISIT_MAX)
+        limit = GC_VISIT_MAX;
     memset(w.slot, 0, sizeof w.slot);
     w.n = 0;
     walk_add(&w, id, 1);
@@ -318,16 +320,20 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth,
         if (emit(&l, ctx) != 0)
             break;
         emitted++;
-        if (level >= depth)
+        if (depth > 0 && level >= depth)
             continue;
         if (l.cut)
             *cut = 1;
-        for (i = 0; i < l.nchildren; i++)
+        for (i = 0; i < l.nchildren; i++) {
+            if (w.n >= limit) { *cut = 1; break; }
             if (walk_add(&w, l.children[i], level + 1) < 0)
                 *cut = 1;
-        for (i = 0; i < l.nparents; i++)
+        }
+        for (i = 0; i < l.nparents; i++) {
+            if (w.n >= limit) { *cut = 1; break; }
             if (walk_add(&w, l.parents[i], level + 1) < 0)
                 *cut = 1;
+        }
     }
     return emitted;
 }

@@ -11,13 +11,14 @@ breadth-first walk of N-1 hops, and nothing of the graph is held in memory.
 Ten lines or a billion, the process is the same two megabytes.
 
 <p align="center">
-  <img src="screenshots/hub.png" width="70%" alt="a hub of 394 children at depth 2: the first 60 on a circle, the rest as stubs with a count">
+  <img src="screenshots/hub.png" width="70%" alt="the 25 nodes nearest a hub of 394 children; the rest are stubs with a count">
 </p>
-<p align="center"><em>A hub with 394 children in a generated graph. Sixty get a place on the circle, the rest are stubs and a count; cyan nodes can be crawled into, green ones have no children, blue is visited.</em></p>
+<p align="center"><em>A budget of 25 around a hub with 394 children in a generated graph: the nearest 25 get a place, the rest are stubs and a count. Blue nodes have more beyond them, green ones are complete, the centre is amber.</em></p>
 <p align="center">
-  <img src="screenshots/depth3.png" width="48%" alt="depth 3 around one node, the view zoomed to fit">
+  <img src="screenshots/family.png" width="48%" alt="the 1999 family demo at a budget of 100: all sixteen nodes">
   <img src="screenshots/crawl.png" width="48%" alt="after double-clicking father: it glided to the centre and expanded; the cursor rests on grandmother(father)">
 </p>
+<p align="center"><em>A graph smaller than the budget comes out whole (the 1999 family demo, 16 nodes). Right: after a double-click on "father", the hover label on a grandmother. <code>?style=1999</code> gives the applet's own paint (<a href="screenshots/style1999.png">screenshot</a>).</em></p>
 
 ## Run
 
@@ -83,17 +84,28 @@ nodes; `doc/FORMAT.md` gives the bounds.
 ## The view
 
 `web/graphcrawl.js` is the applet class by class (`doc/PORT.md` has the map,
-the deviations, and the added parameters). Double-click a node to crawl to
-it; shift held keeps the content frame. Drag a node; drag the background to
-pan; wheel to zoom. Hover for the full label and the node's counts. Tree
-Depth 1 to 6 re-expands the central node; after an expansion the view zooms
-out until everything fits. Go to id and Find re-centre by id or by label
-text; Back and the browser's history walk the crawl, since every node is
-`#ID` in the URL.
+the deviations, and the added parameters). A view is a budget of nodes, not
+a depth: the server walks breadth first from the centre until Nodes (100 by
+default) are in hand, so a small graph comes out whole and a large one shows
+its nearest hundred; Depth is an optional cap. A green node has every
+neighbour on screen; a blue one has more beyond it, drawn as stubs with a
+count.
 
-Placement is the 1999 one: circles and sectors, no overlap avoidance; a hub
-gets a wider circle, a deep level fewer neighbours. Placement by search is
-[cjitter](https://github.com/Anode1/cjitter)'s subject.
+Double-click a node to crawl to it: the view empties, the node glides to
+the centre and its neighbourhood is fetched (the 1999 gesture). Alt or Ctrl
+with the double-click opens the node where it stands instead, adding its
+neighbourhood around it, so a picture grows outward one click-cost at a
+time. Shift keeps the content frame. Drag a node; drag the background to
+pan; wheel to zoom; after an expansion the view zooms out until everything
+fits. Hover for the full label and the node's counts. Go to id and Find
+re-centre by id or by label text; Back and the browser's history walk the
+crawl, since every node is `#ID` in the URL.
+
+The look follows kul's tokens (system type, rounded cards, a slate palette);
+`?style=1999` paints and frames it exactly as the applet did. Placement is
+the 1999 one: circles and sectors, no overlap avoidance; a hub gets a wider
+circle. Placement by search is [cjitter](https://github.com/Anode1/cjitter)'s
+subject.
 
 The browser canvas over localhost is the portable front-end, as in `ais
 --serve`: one page, every desktop, no framework. The page is plain files in
