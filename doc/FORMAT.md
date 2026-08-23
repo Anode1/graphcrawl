@@ -32,14 +32,20 @@ the engine's footprint is its fixed buffers (`c/common.h`), the same for ten
 lines and a trillion.
 
 A click asks for the nodes nearest one node: a breadth-first walk over
-children and parents until a budget of N nodes is in hand (`limit=N`),
-within D hops when a cap is given (`depth=D`; the 1999 request was depth
-alone), each visited node one lookup (two with a parents file), every node's
-line sent whole so the view can draw stubs for the neighbours it does not
-show. A graph smaller than the budget comes out whole. Memory is the visited
-table, bounded at `GC_VISIT_MAX` (16384) nodes, the budget's ceiling; a
-walk that stopped at its budget ends the response with a `#cut N` line,
-which the page reports.
+children and parents visiting at most N nodes (`limit=N`), within D hops
+when a cap is given (`depth=D`; the 1999 request was depth alone), each
+visited node one lookup (two with a parents file), every node's line sent
+whole so the view can draw stubs for the neighbours it does not show. The
+budget counts what the walk visits, so an id that turns out to have no line
+spends budget and sends none: the lines returned can be fewer than N. A
+graph smaller than the budget comes out whole. Memory is the visited table,
+bounded at `GC_VISIT_MAX` (16384) nodes, the budget's ceiling.
+
+The response ends with a `#cut N` line, which the page reports, when the
+walk left something out: a neighbour the budget had no room for, or a list
+too long for its line. A walk that closed on itself is not cut, however
+exactly it filled the budget, so a view whose nodes are all green never
+carries the trailer.
 
 Locality is what makes this fast rather than merely possible. Ids near each
 other in value are near each other in the file, and a node's neighbours in
@@ -78,7 +84,9 @@ Parents can live on the line (the 1999 server wrote them there) or in
 `FILE.parents` beside the graph, one `child;parent` per line sorted by
 child, built by the `--reverse` line above. A node's parents are the union
 of its line's field and the side file's rows, found by the same binary
-search. Keeping parents out of the main file lets the main file stay an
+search. A hub with more rows than `GC_FANOUT_MAX` (16384) keeps the first
+16384 and reports the cut, rather than coming back looking complete: on a
+Debian package graph `libc6` has 24744 dependents and shows 16384 of them. Keeping parents out of the main file lets the main file stay an
 adjacency list that is cheap to write and cheap to regenerate the reverse
 of.
 
@@ -116,6 +124,8 @@ what the viewer needs.
 | `GC_LABEL_MAX` | 1024 | label |
 | `GC_URL_MAX` | 2048 | url |
 
-A neighbourhood walk holds its visited table (about 270 KB), one parsed
-line (about 260 KB) and, inside the lookup, a line buffer and the parents
-buffer (about 400 KB): under a megabyte of stack.
+A neighbourhood walk holds its visited table and one parsed line (531 KB),
+the lookup inside it a line buffer and the merged parents (384 KB), and the
+parents lookup inside that another line buffer (256 KB): 1.14 MB of stack
+for a click, 1.40 MB through the server, which adds its request buffer.
+Measured with `cc -fstack-usage`.

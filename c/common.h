@@ -21,8 +21,10 @@
 #define GC_DEPTH_MAX       8   /* view depth the server will expand to        */
 #define GC_FIND_MAX       50   /* matches one label search returns            */
 
-/* The deepest stack: a neighbourhood walk holding its visited table (about
- * 270 KB), one parsed line (about 260 KB) and, inside gc_node, a line buffer
- * and the parents buffer (about 400 KB): under 1 MB, on an 8 MB stack. */
+/* The deepest stack, measured with -fstack-usage: gc_neighbourhood (531 KB,
+ * its visited table and one parsed line) calls gc_node (384 KB, a line buffer
+ * and the merged parents) calls gc_parents (256 KB, a line buffer), so 1.14 MB
+ * for a click; the server adds handle's request buffer for 1.40 MB. On an
+ * 8 MB stack, and the same for ten lines and a trillion. */
 
 #endif /* GC_COMMON_H */

@@ -50,6 +50,16 @@ static int cmp_ll(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
+static int listed(const long long *v, int n, long long id)
+{
+    int i;
+
+    for (i = 0; i < n; i++)
+        if (v[i] == id)
+            return 1;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     long long nodes = 1000, i, hubs = 0, longs = 0;
@@ -132,13 +142,18 @@ int main(int argc, char **argv)
                cats > 0 ? (int)(i % (cats + 1)) : 0);
         for (k = 0; k < nring[slot]; k++, first = 0)
             printf(first ? "%lld" : ",%lld", ring[slot][k]);
+        /* a hub or long edge may land on a child the window already chose;
+         * an id twice in one list would make the view count it twice */
         for (k = 0; k < nhub; k++) {
             if (hub[k] >= nodes || (k > 0 && hub[k] == hub[k - 1]))
+                continue;
+            if (listed(ring[slot], nring[slot], hub[k]))
                 continue;
             printf(first ? "%lld" : ",%lld", hub[k]);
             first = 0;
         }
-        if (extra >= 0) {
+        if (extra >= 0 && !listed(ring[slot], nring[slot], extra)
+            && !listed(hub, nhub, extra)) {
             printf(first ? "%lld" : ",%lld", extra);
             first = 0;
         }

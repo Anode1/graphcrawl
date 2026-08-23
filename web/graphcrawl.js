@@ -311,7 +311,11 @@ class WrappedLabel {
     }
     const words = this.string.split(/\s+/).filter((w) => w.length > 0);
     const numWords = words.length;
-    const maxWidth = rightBorder - this.shortLabelWidth - indent - indent;
+    /* Never below 0: the loop below only advances while a line still fits, so
+     * a negative width would spin forever. 1999 could not produce one, but the
+     * world is now the canvas divided by the zoom (doc/PORT.md, `fit`), and
+     * zooming in on a narrow panel makes it narrower than a short label. */
+    const maxWidth = Math.max(0, rightBorder - this.shortLabelWidth - indent - indent);
     const strings = [];
     let curLine = '';
     for (let i = 0; i < numWords;) {
@@ -738,6 +742,7 @@ class InfoRequest {
     this.debug = false;
     this.alive = false;
     this.abort = null;
+    this.error = null;
   }
   setDebug(d) { this.debug = d; }
   start() {
@@ -756,6 +761,9 @@ class InfoRequest {
       const delay = parseInt(this.applet.getParameter('delay_ms') || '0', 10);
       this.getFromCGI().then(() => {
         if (!this.alive) return;
+        /* nothing arrived: the model is still the previous one, so expanding
+         * it again would redraw the old view and say nothing */
+        if (this.error != null) { this.applet.requestFailed(this.error); return; }
         if (delay > 0) setTimeout(() => { if (this.alive) this.applet.dataReady(this.parentID); }, delay);
         else this.applet.dataReady(this.parentID);
       });
@@ -790,7 +798,10 @@ class InfoRequest {
       }
       if (this.alive) { this.applet.setGraphModel(parser.getGraphModel()); this.applet.lastCut = cut; }
     } catch (e) {
-      if (this.alive) console.log('InfoRequestThread::getFromCGI:Error during http request:' + e);
+      if (this.alive) {
+        this.error = e;
+        console.log('InfoRequestThread::getFromCGI:Error during http request:' + e);
+      }
     }
   }
   getFromAppletParameters() {
@@ -971,12 +982,12 @@ class GraphView {
   }
   /* after any change of the set: colours for the ends, sizes, fit, status */
   settle() {
-    this.markEnds();
+    const hidden = this.markEnds();
     if (this.centralNode != null) this.centralNode.setHighlighted(true);
     this.paint();                               /* sizes every new node from its label, moves none */
     if (this.fitOnExpand) this.fitView();
     this.repaint();
-    const shown = this.nodes.elements().length, hidden = this.countHidden();
+    const shown = this.nodes.elements().length;
     const more = this.applet.lastCut || this.cutByLimit;
     this.expandStatus = shown + ' node' + (shown === 1 ? '' : 's') + ' shown' +
       (hidden ? ', ' + hidden + ' neighbour' + (hidden === 1 ? '' : 's') + ' beyond' : '') +
@@ -1002,6 +1013,7 @@ class GraphView {
     const id = nodeView.nodeModel.id;
     this.motor.resumeThread();
     this.applet.fetchModel(id, 2, this.limit).then((model) => {
+      if (model == null) { this.motor.suspendThread(); return; }   /* fetchModel said why */
       const mine = this.applet.getGraphModel();
       for (const n of model.map.values()) if (mine.getNode(n.id) == null) mine.addNode(n.id, n);
       const fresh = mine.getNode(id);
@@ -1025,14 +1037,18 @@ class GraphView {
     this.applet.resetGraphModel(this.centralNode.nodeModel.id, this.depth, this.limit);
   }
   /* green when every neighbour is on screen, blue when crawling here shows
-   * more: the unexpanded ends of the walk */
+   * more: the unexpanded ends of the walk. Returns the total left off screen,
+   * which is the count the status line wants, so settle walks the lists once */
   markEnds() {
+    let total = 0;
     for (const n of this.nodes.elements()) {
       let hidden = 0;
       for (const id of n.nodeModel.children) if (this.getNode(id) == null) hidden++;
       for (const id of n.nodeModel.parents) if (this.getNode(id) == null) hidden++;
       n.setTerminal(hidden === 0);
+      total += hidden;
     }
+    return total;
   }
   removeAllButCentral() {
     this.removeAll();
@@ -1072,8 +1088,12 @@ class GraphView {
       const made = this.placeAround(nodeView, nodeView.level, this.limit - placed);
       placed += made.length;
       for (const v of made) queue.push(v);
-      if (placed >= this.limit && this.countHidden() > 0) { this.cutByLimit = true; break; }
+      /* the budget is spent: placeAround would return nothing from here on */
+      if (placed >= this.limit) { this.cutByLimit = true; break; }
     }
+    /* it only cut the view if something was actually left off screen; one walk
+     * of the lists, not one per node still queued */
+    if (this.cutByLimit && this.countHidden() === 0) this.cutByLimit = false;
   }
   /* place the neighbours of NODEVIEW that the model holds and the view does
    * not, at most BUDGET of them, with the 1999 angles; returns them */
@@ -1510,6 +1530,12 @@ class NavigatorApplet {
     };
     wait();
   }
+  /* the answer never came: keep the view that is up and say so, rather than
+   * re-expanding the model of the previous node as though nothing happened */
+  requestFailed(e) {
+    this.setWaitingForServer(false);
+    this.showStatus('the server did not answer: ' + e);
+  }
   isWaitingForServer() { return this.waitingForServer; }
   setWaitingForServer(w) {
     this.waitingForServer = w;
@@ -1533,7 +1559,7 @@ class NavigatorApplet {
     try {
       const r = await fetch(url, { cache: 'no-store' });
       for (const line of (await r.text()).split('\n')) if (line.length > 0) parser.parseLine(line.replace(/\r$/, ''));
-    } catch (e) { this.showStatus('request failed: ' + e); }
+    } catch (e) { this.showStatus('the server did not answer: ' + e); return null; }
     return parser.getGraphModel();
   }
   /* crawl to an id typed, searched or taken from the URL */
@@ -1559,6 +1585,15 @@ class NavigatorApplet {
       if (n.label.toLowerCase().indexOf(lower) >= 0) found.push(n);
     this.toolsPanel.showResults(found);
   }
+  /* The url field resolved, when it is a document the frame may open. A graph
+   * file is third-party data (an edge list, a crawl, apt's output), and the
+   * frame shares this page's origin, so a "javascript:" or "data:" url would
+   * run as the page itself. http and https only; null refuses. */
+  static safeUrl(url) {
+    let u;
+    try { u = new URL(url, location.href); } catch (e) { return null; }
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+  }
   /* show the node's URL in the "content" frame and put it into the history */
   showUrl(node) {
     this.toolsPanel.addHistoryNode(node);
@@ -1567,16 +1602,19 @@ class NavigatorApplet {
     let url = node.getUrl();
     if (url == null) { console.log('Trying to connect with null URL'); return; }
     url = url.trim();
-    if (url === '') {
-      /* no document: show the record itself (a deviation, doc/PORT.md) */
+    const safe = url === '' ? '' : NavigatorApplet.safeUrl(url);
+    if (safe === null) this.showStatus('node ' + node.getID() + ': refused a url that is not http or https');
+    if (safe === '' || safe === null) {
+      /* no document, or none this frame may open: show the record itself
+       * (a deviation, doc/PORT.md) */
       frame.removeAttribute('src');
       frame.srcdoc = '<pre style="font:13px monospace;white-space:pre-wrap">' +
         NavigatorApplet.escape(node.toString().split(';').join(';\n')) + '</pre>';
       return;
     }
-    this.showStatus(url + ' connecting...');
+    this.showStatus(safe + ' connecting...');
     frame.removeAttribute('srcdoc');
-    frame.src = url;
+    frame.src = safe;
     this.showStatus('');
   }
   static escape(s) {

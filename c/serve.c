@@ -29,21 +29,38 @@ static void write_all(int fd, const char *p, size_t n)
     }
 }
 
-static void send_head(int fd, const char *ctype)
+/* One connection: the socket, and whether the request was HEAD. A HEAD gets
+ * the headers a GET would and no body (RFC 1945 section 8.2), so every body
+ * write in this file goes through send_body and only the headers use
+ * write_all directly. */
+struct conn {
+    int fd;
+    int head;
+};
+
+static void send_body(struct conn *c, const char *p, size_t n)
+{
+    if (!c->head)
+        write_all(c->fd, p, n);
+}
+
+static void send_head(struct conn *c, const char *ctype)
 {
     char h[160];
     int n = snprintf(h, sizeof h,
                      "HTTP/1.0 200 OK\r\nContent-Type: %s\r\n"
                      "Cache-Control: no-store\r\nConnection: close\r\n\r\n", ctype);
     if (n > 0)
-        write_all(fd, h, (size_t)n);
+        write_all(c->fd, h, (size_t)n);
 }
 
-static void not_found(int fd)
+static void not_found(struct conn *c)
 {
-    static const char nf[] =
-        "HTTP/1.0 404 Not Found\r\nConnection: close\r\n\r\nnot found\n";
-    write_all(fd, nf, sizeof nf - 1);
+    static const char head[] = "HTTP/1.0 404 Not Found\r\nConnection: close\r\n\r\n";
+    static const char body[] = "not found\n";
+
+    write_all(c->fd, head, sizeof head - 1);
+    send_body(c, body, sizeof body - 1);
 }
 
 static int hexval(int c)
@@ -133,7 +150,7 @@ static int safe_name(const char *name)
 
 /* <$GRAPHCRAWL_WEB>/NAME when that directory is set and holds it, else the
  * embedded copy. 1 if served. */
-static int serve_asset(int fd, const char *name)
+static int serve_asset(struct conn *c, const char *name)
 {
     const char *webdir = getenv("GRAPHCRAWL_WEB");
     size_t i;
@@ -147,17 +164,17 @@ static int serve_asset(int fd, const char *name)
 
         if (snprintf(path, sizeof path, "%s/%s", webdir, name) < (int)sizeof path
             && (fp = fopen(path, "rb")) != NULL) {
-            send_head(fd, ctype_of(name));
+            send_head(c, ctype_of(name));
             while ((n = fread(buf, 1, sizeof buf, fp)) > 0)
-                write_all(fd, buf, n);
+                send_body(c, buf, n);
             fclose(fp);
             return 1;
         }
     }
     for (i = 0; i < gc_assets_n; i++) {
         if (strcmp(gc_assets[i].name, name) == 0) {
-            send_head(fd, gc_assets[i].ctype);
-            write_all(fd, (const char *)gc_assets[i].data, gc_assets[i].len);
+            send_head(c, gc_assets[i].ctype);
+            send_body(c, (const char *)gc_assets[i].data, gc_assets[i].len);
             return 1;
         }
     }
@@ -170,11 +187,11 @@ static int emit_line(const struct gc_line *l, void *ctx)
     int n = gc_line_format(l, buf, sizeof buf);
 
     if (n > 0)
-        write_all(*(int *)ctx, buf, (size_t)n);
+        send_body(ctx, buf, (size_t)n);
     return 0;
 }
 
-static void api_node(struct gc_graph *g, int fd, const char *query)
+static void api_node(struct gc_graph *g, struct conn *c, const char *query)
 {
     char v[64];
     long long id;
@@ -182,11 +199,11 @@ static void api_node(struct gc_graph *g, int fd, const char *query)
 
     if (!query_get(query, "keywordid", v, sizeof v) &&
         !query_get(query, "id", v, sizeof v)) {
-        not_found(fd);
+        not_found(c);
         return;
     }
     if (gc_line_id(v, &id) != 0) {
-        not_found(fd);
+        not_found(c);
         return;
     }
     if (query_get(query, "depth", v, sizeof v))
@@ -195,32 +212,32 @@ static void api_node(struct gc_graph *g, int fd, const char *query)
         limit = atoi(v);
     if (depth < 0)                        /* the 1999 request: depth 2 and no budget */
         depth = limit > 0 ? 0 : 2;
-    send_head(fd, "text/plain; charset=utf-8");
-    n = gc_neighbourhood(g, id, depth, limit, emit_line, &fd, &cut);
+    send_head(c, "text/plain; charset=utf-8");
+    n = gc_neighbourhood(g, id, depth, limit, emit_line, c, &cut);
     if (cut) {
         char t[64];
         int k = snprintf(t, sizeof t, "#cut %d\n",
                          limit > 0 && limit < GC_VISIT_MAX ? limit : GC_VISIT_MAX);
-        write_all(fd, t, (size_t)k);        /* a trailer the page reports */
+        send_body(c, t, (size_t)k);         /* a trailer the page reports */
     }
     debug("node %lld depth %d limit %d: %d lines%s", id, depth, limit, n, cut ? " (cut)" : "");
 }
 
-static void api_find(struct gc_graph *g, int fd, const char *query)
+static void api_find(struct gc_graph *g, struct conn *c, const char *query)
 {
     char q[256];
     int n;
 
     if (!query_get(query, "q", q, sizeof q) || q[0] == '\0') {
-        not_found(fd);
+        not_found(c);
         return;
     }
-    send_head(fd, "text/plain; charset=utf-8");
-    n = gc_search(g, q, GC_FIND_MAX, emit_line, &fd);
+    send_head(c, "text/plain; charset=utf-8");
+    n = gc_search(g, q, GC_FIND_MAX, emit_line, c);
     debug("find '%s': %d lines", q, n);
 }
 
-static void api_info(struct gc_graph *g, int fd)
+static void api_info(struct gc_graph *g, struct conn *c)
 {
     char buf[GC_PATH_MAX + 256];
     long long first = 0, last = 0;
@@ -230,17 +247,20 @@ static void api_info(struct gc_graph *g, int fd)
     n = snprintf(buf, sizeof buf,
                  "file=%s\nsize=%lld\nfirst=%lld\nlast=%lld\nparents=%d\n",
                  g->path, (long long)g->size, first, last, g->pfp != NULL);
-    send_head(fd, "text/plain; charset=utf-8");
+    send_head(c, "text/plain; charset=utf-8");
     if (n > 0 && (size_t)n < sizeof buf)
-        write_all(fd, buf, (size_t)n);
+        send_body(c, buf, (size_t)n);
 }
 
 static void handle(struct gc_graph *g, int fd)
 {
     char buf[GC_LINE_MAX];
     char *method, *path, *query, *sp;
+    struct conn c;
     ssize_t n = read(fd, buf, sizeof buf - 1);
 
+    c.fd = fd;
+    c.head = 0;
     if (n <= 0)
         return;
     buf[n] = '\0';
@@ -256,20 +276,22 @@ static void handle(struct gc_graph *g, int fd)
     query = strchr(path, '?');
     if (query != NULL)
         *query++ = '\0';
-    if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0) {
-        not_found(fd);
+    if (strcmp(method, "HEAD") == 0)
+        c.head = 1;
+    else if (strcmp(method, "GET") != 0) {
+        not_found(&c);
         return;
     }
     if (strcmp(path, "/api/node") == 0)
-        api_node(g, fd, query);
+        api_node(g, &c, query);
     else if (strcmp(path, "/api/find") == 0)
-        api_find(g, fd, query);
+        api_find(g, &c, query);
     else if (strcmp(path, "/api/info") == 0)
-        api_info(g, fd);
+        api_info(g, &c);
     else if (strcmp(path, "/") == 0)
-        serve_asset(fd, "index.html");
-    else if (!serve_asset(fd, path + 1))
-        not_found(fd);
+        serve_asset(&c, "index.html");
+    else if (!serve_asset(&c, path + 1))
+        not_found(&c);
 }
 
 /* Launch the user's browser on the page; the desktop's opener on Linux, the

@@ -139,6 +139,9 @@ int main(void)
         CHECK(gc_neighbourhood(&g, 7, 2, 0, collect_cb, &c, &cut) == 2);
         /* an absent centre is -1 */
         CHECK(gc_neighbourhood(&g, 77, 2, 0, collect_cb, &c, &cut) == -1);
+        /* the budget cuts the walk, and says so */
+        c.n = 0;
+        CHECK(gc_neighbourhood(&g, 0, 0, 3, collect_cb, &c, &cut) == 3 && cut == 1);
     }
 
     /* check: the fixture passes */
@@ -151,8 +154,13 @@ int main(void)
     /* parents file: merged into a node, deduplicated, found for several rows */
     write_file(ppath, "1;0\n2;0\n3 1\n3;1\n3;2\n4;1\n");
     CHECK(gc_open(&g, gpath) == 0 && g.pfp != NULL);
-    CHECK(gc_parents(&g, 3, ids, 8) == 3);
-    CHECK(gc_parents(&g, 0, ids, 8) == 0);
+    {
+        int pcut = 0;
+        CHECK(gc_parents(&g, 3, ids, 8, &pcut) == 3 && pcut == 0);
+        CHECK(gc_parents(&g, 0, ids, 8, &pcut) == 0 && pcut == 0);
+        /* more rows than fit says so instead of looking complete */
+        CHECK(gc_parents(&g, 3, ids, 2, &pcut) == 2 && pcut == 1);
+    }
     CHECK(gc_node(&g, 3, &l) == 1 && l.nparents == 4 && l.nchildren == 0);   /* 7,8 + 1,2; the repeat dropped */
     CHECK(gc_node(&g, 1, &l) == 1 && l.nparents == 3 && l.parents[2] == 0 && l.nchildren == 0);
     /* neighbourhood now reaches 1 and 2 through the parents file as well as 7 and 8 */
@@ -227,6 +235,22 @@ int main(void)
         struct collect c = { {0}, 0 };
         int cut;
         CHECK(gc_neighbourhood(&g, 3, 2, 0, collect_cb, &c, &cut) == 3);
+    }
+    gc_close(&g);
+
+    /* a walk that closed on itself is not cut, however exactly it fills the
+     * budget: every node and every edge of this cycle is in the answer */
+    write_file(gpath, "1;;;;2;\n2;;;;3;\n3;;;;1;\n");
+    unlink(ppath);
+    CHECK(gc_open(&g, gpath) == 0);
+    {
+        struct collect c = { {0}, 0 };
+        int cut;
+        CHECK(gc_neighbourhood(&g, 1, 0, 3, collect_cb, &c, &cut) == 3 && cut == 0);
+        c.n = 0;                       /* one short of the cycle: node 3 is left out */
+        CHECK(gc_neighbourhood(&g, 1, 0, 2, collect_cb, &c, &cut) == 2 && cut == 1);
+        c.n = 0;                       /* room to spare */
+        CHECK(gc_neighbourhood(&g, 1, 0, 100, collect_cb, &c, &cut) == 3 && cut == 0);
     }
     gc_close(&g);
 

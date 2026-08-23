@@ -7,7 +7,8 @@
 /c/graphcrawl_ut_asan
 /c/web.c
 /util/mkgraph
+/util/evict
 /example/big.txt
-Thumbs.db
 /example/packages.txt
 /example/packages.txt.parents
+Thumbs.db

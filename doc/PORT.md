@@ -60,6 +60,11 @@ behaviour as one of its values (the table at the end).
   same.
 - A node without a URL shows its record in the content frame. In 1999 the
   frame stayed as it was.
+- The content frame opens `http` and `https` only, and is sandboxed without
+  `allow-same-origin`. It shares the page's origin, so in 1999's terms a
+  `javascript:` url field would have been the applet's own code. A refused
+  url shows the record instead and the status says so. 1999 served its own
+  intranet and passed the field through.
 - Font metrics are fixed at height 15, descent 3 (Dialog 12 on Windows);
   widths come from `measureText`.
 - No offscreen image: the canvas is double-buffered by the browser.

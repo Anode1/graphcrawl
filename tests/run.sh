@@ -49,6 +49,18 @@ eq "a small graph comes out whole"   "4" "$("$GC" --node 1 -l 100 "$T/small.txt"
 eq "... with no cut"                 "" "$("$GC" --node 1 -l 100 "$T/small.txt" 2>&1 >/dev/null)"
 eq "limit and depth together"        "3" "$("$GC" --node 1 -l 100 -d 2 "$T/small.txt" | wc -l | tr -d ' ')"
 
+# --- a walk that closed on itself is not cut, however exactly it fills the budget
+printf '1;;;;2;\n2;;;;3;\n3;;;;1;\n' > "$T/cycle.txt"
+eq "a cycle at its exact budget is whole" "3" "$("$GC" --node 1 -l 3 "$T/cycle.txt" | wc -l | tr -d ' ')"
+eq "... and reports no cut"          "" "$("$GC" --node 1 -l 3 "$T/cycle.txt" 2>&1 >/dev/null)"
+ok "one short of it does report one" "more nodes beyond the 2" "$("$GC" --node 1 -l 2 "$T/cycle.txt" 2>&1 >/dev/null)"
+
+# --- parents past GC_FANOUT_MAX are cut, not silently dropped
+awk 'BEGIN { print "1;hub;;;;"; for (i = 2; i <= 16500; i++) print i ";;;;1;" }' > "$T/hub.txt"
+"$GC" --reverse "$T/hub.txt" | sort -t';' -k1,1n -k2,2n -u > "$T/hub.txt.parents"
+eq "a hub keeps GC_FANOUT_MAX parents" "16384" "$("$GC" --node 1 -d 1 "$T/hub.txt" 2>/dev/null | cut -d';' -f6 | tr ',' '\n' | grep -c .)"
+ok "... and says the rest were cut"  "more nodes beyond" "$("$GC" --node 1 -d 1 "$T/hub.txt" 2>&1 >/dev/null)"
+
 # --- the parents side-file built by --reverse + sort, read back into the lines
 awk -F';' '{print $1";"$2";"$3";"$4";"$5";"}' "$T/g.txt" > "$T/np.txt"   # strip parents
 eq "stripped file has no parents"    "" "$("$GC" --node 100 -d 1 "$T/np.txt" | cut -d';' -f6)"
@@ -114,6 +126,14 @@ eq "GET /api/node without an id is 404" "404" "$(curl -s -o /dev/null -w '%{http
 eq "GET of a missing asset is 404"   "404" "$(curl -s -o /dev/null -w '%{http_code}' "$B/nothing.js")"
 eq "GET ../ is refused"              "404" "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is "$B/../etc/passwd")"
 eq "POST is refused"                 "404" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/info")"
+# HEAD answers with the headers a GET would send and no body (RFC 1945 8.2)
+eq "HEAD / is 200"                   "200" "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/")"
+eq "HEAD / has no body"              "0" "$(curl -s -o - -I "$B/" | sed -n '/^.$/,$p' | tail -n +2 | wc -c | tr -d ' ')"
+eq "HEAD /api/node has no body"      "0" "$(curl -s -I "$B/api/node?keywordid=100" | sed -n '/^.$/,$p' | tail -n +2 | wc -c | tr -d ' ')"
+eq "HEAD of a missing asset is 404"  "404" "$(curl -s -o /dev/null -w '%{http_code}' -I "$B/nothing.js")"
+# the content frame may not open a url the graph file made up
+ok "the page sandboxes the content frame" 'sandbox="allow-scripts' "$(curl -s "$B/")"
+ok "... and refuses a non-http url"  "safeUrl" "$(curl -s "$B/graphcrawl.js")"
 
 echo "passed $pass, failed $fail"
 [ $fail -eq 0 ]

@@ -21,7 +21,9 @@
   <ul id="results" hidden></ul>
   <div id="status"></div>
 </div>
-<iframe name="content" src="about:blank"></iframe>
+<!-- no allow-same-origin: a node's page gets an opaque origin and cannot
+     reach this one, whatever the graph file put in its url field -->
+<iframe name="content" src="about:blank" sandbox="allow-scripts allow-popups allow-forms"></iframe>
 
 <script>
 /* the <param> block of 1999. first_node comes from #id in the URL or from

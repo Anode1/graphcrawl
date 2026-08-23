@@ -186,7 +186,8 @@ int gc_find(struct gc_graph *g, long long id, char *buf, size_t sz)
     return n > 0 && found == id;
 }
 
-int gc_parents(struct gc_graph *g, long long id, long long *out, int max)
+int gc_parents(struct gc_graph *g, long long id, long long *out, int max,
+               int *cut)
 {
     char buf[GC_LINE_MAX];
     off_t at;
@@ -197,8 +198,13 @@ int gc_parents(struct gc_graph *g, long long id, long long *out, int max)
     if (g->pfp == NULL)
         return 0;
     n = lower_bound(g->pfp, g->psize, id, buf, sizeof buf, &at, &found);
-    while (n > 0 && found == id && count < max) {
-        int k = gc_line_pair(buf, &found, out + count, max - count);
+    while (n > 0 && found == id) {
+        int k;
+        if (count >= max) {
+            *cut = 1;                  /* rows for ID left unread past MAX */
+            break;
+        }
+        k = gc_line_pair(buf, &found, out + count, max - count);
         if (k > 0)
             count += k;
         at += n;
@@ -237,7 +243,7 @@ int gc_node(struct gc_graph *g, long long id, struct gc_line *l)
         if (g->pfp == NULL)
             return 0;
     }
-    n = gc_parents(g, id, extra, GC_FANOUT_MAX);
+    n = gc_parents(g, id, extra, GC_FANOUT_MAX, &l->cut);
     if (r == 0 && n == 0)
         return 0;
     for (i = 0; i < n; i++) {
@@ -269,8 +275,10 @@ static unsigned slot_of(long long id)
     return (unsigned)(h >> 40) % SEEN_SLOTS;
 }
 
-/* Add ID at LEVEL unless seen. 1 added, 0 seen already, -1 table full. */
-static int walk_add(struct walk *w, long long id, int level)
+/* Add ID at LEVEL unless seen. 1 added, 0 seen already, -1 ID is new and the
+ * budget is spent: only then did the walk leave a node out. LIMIT is at most
+ * GC_VISIT_MAX (its caller clamps it), so the table never fills. */
+static int walk_add(struct walk *w, long long id, int level, int limit)
 {
     unsigned s = slot_of(id);
 
@@ -282,7 +290,7 @@ static int walk_add(struct walk *w, long long id, int level)
             return 0;
         s = (s + 1) % SEEN_SLOTS;
     }
-    if (w->n >= GC_VISIT_MAX)
+    if (w->n >= limit)
         return -1;
     w->seen[w->n] = id;
     w->level[w->n] = (unsigned char)level;
@@ -306,7 +314,7 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
         limit = GC_VISIT_MAX;
     memset(w.slot, 0, sizeof w.slot);
     w.n = 0;
-    walk_add(&w, id, 1);
+    walk_add(&w, id, 1, limit);
     while (head < w.n) {
         long long cur = w.seen[head];
         int level = w.level[head], i;
@@ -320,20 +328,19 @@ int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
         if (emit(&l, ctx) != 0)
             break;
         emitted++;
+        if (l.cut)
+            *cut = 1;                  /* its own lists did not fit the line */
         if (depth > 0 && level >= depth)
             continue;
-        if (l.cut)
-            *cut = 1;
-        for (i = 0; i < l.nchildren; i++) {
-            if (w.n >= limit) { *cut = 1; break; }
-            if (walk_add(&w, l.children[i], level + 1) < 0)
+        /* Every neighbour is offered even once the budget is spent: only an id
+         * the view does not already hold counts as a node left out, so a walk
+         * that closed on itself is not reported as cut. */
+        for (i = 0; i < l.nchildren; i++)
+            if (walk_add(&w, l.children[i], level + 1, limit) < 0)
                 *cut = 1;
-        }
-        for (i = 0; i < l.nparents; i++) {
-            if (w.n >= limit) { *cut = 1; break; }
-            if (walk_add(&w, l.parents[i], level + 1) < 0)
+        for (i = 0; i < l.nparents; i++)
+            if (walk_add(&w, l.parents[i], level + 1, limit) < 0)
                 *cut = 1;
-        }
     }
     return emitted;
 }

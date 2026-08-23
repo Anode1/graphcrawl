@@ -35,8 +35,10 @@ typedef int (*gc_emit_fn)(const struct gc_line *l, void *ctx);
 int gc_find(struct gc_graph *g, long long id, char *buf, size_t sz);
 
 /* Parents of ID from FILE.parents into OUT (at most MAX). The count, 0 when
- * there is no parents file. */
-int gc_parents(struct gc_graph *g, long long id, long long *out, int max);
+ * there is no parents file. *CUT is set when the file holds rows past MAX, so
+ * a hub whose parents do not fit says so instead of looking complete. */
+int gc_parents(struct gc_graph *g, long long id, long long *out, int max,
+               int *cut);
 
 /* Node ID parsed, with FILE.parents merged in. An id that has no line but
  * has rows in FILE.parents is a node too (an edge-list target): it comes
@@ -61,10 +63,12 @@ int gc_search(struct gc_graph *g, const char *text, int max,
 int gc_group(FILE *in, FILE *out, FILE *report);
 
 /* The nodes nearest ID, breadth first over children and parents, ID first,
- * each handed to EMIT with its full lists: at most LIMIT nodes (capped at
- * GC_VISIT_MAX), and within DEPTH-1 hops when DEPTH is not 0. A small graph
- * comes out whole; a large one stops at the budget and *CUT says so, the
- * unexpanded frontier showing as neighbours the view does not hold.
+ * each handed to EMIT with its full lists: visiting at most LIMIT nodes
+ * (capped at GC_VISIT_MAX), and within DEPTH-1 hops when DEPTH is not 0. A
+ * visited id with no line sends nothing, so the count can be under LIMIT.
+ * *CUT is set only when something was left out: a neighbour the budget had no
+ * room for, or a list too long for its line. A small graph comes out whole
+ * and uncut however exactly it fills the budget.
  * Returns the count, -1 if ID is absent. */
 int gc_neighbourhood(struct gc_graph *g, long long id, int depth, int limit,
                      gc_emit_fn emit, void *ctx, int *cut);
