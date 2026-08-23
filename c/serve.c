@@ -193,7 +193,26 @@ static void api_node(struct gc_graph *g, int fd, const char *query)
         depth = atoi(v);
     send_head(fd, "text/plain; charset=utf-8");
     n = gc_neighbourhood(g, id, depth, emit_line, &fd, &cut);
+    if (cut) {
+        char t[64];
+        int k = snprintf(t, sizeof t, "#cut %d\n", GC_VISIT_MAX);
+        write_all(fd, t, (size_t)k);        /* a trailer the page reports */
+    }
     debug("node %lld depth %d: %d lines%s", id, depth, n, cut ? " (cut)" : "");
+}
+
+static void api_find(struct gc_graph *g, int fd, const char *query)
+{
+    char q[256];
+    int n;
+
+    if (!query_get(query, "q", q, sizeof q) || q[0] == '\0') {
+        not_found(fd);
+        return;
+    }
+    send_head(fd, "text/plain; charset=utf-8");
+    n = gc_search(g, q, GC_FIND_MAX, emit_line, &fd);
+    debug("find '%s': %d lines", q, n);
 }
 
 static void api_info(struct gc_graph *g, int fd)
@@ -238,6 +257,8 @@ static void handle(struct gc_graph *g, int fd)
     }
     if (strcmp(path, "/api/node") == 0)
         api_node(g, fd, query);
+    else if (strcmp(path, "/api/find") == 0)
+        api_find(g, fd, query);
     else if (strcmp(path, "/api/info") == 0)
         api_info(g, fd);
     else if (strcmp(path, "/") == 0)

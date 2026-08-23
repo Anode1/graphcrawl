@@ -19,22 +19,24 @@ label:
 
     id child child child
 
-Blank lines and `#` comments are skipped. A line longer than 64 KB, a list
-longer than 4096 ids, or an id out of order is a fault that `--check` names.
+Blank lines and `#` comments are skipped. A line longer than 256 KB, a list
+longer than 16384 ids, or an id out of order is a fault that `--check` names.
 
 ## The file is the index
 
 A lookup is a binary search over the lines (`c/graph.c`, `lower_bound`):
 probe the middle byte, step to the next line start, read the id, halve. For
 a terabyte of 40-byte lines that is about 35 probes, each one seek and one
-line. Nothing of the graph is ever in memory; the engine's footprint is its
-fixed buffers (`c/common.h`), the same for ten lines and a trillion.
+line; `--node -D` prints the count. Nothing of the graph is ever in memory;
+the engine's footprint is its fixed buffers (`c/common.h`), the same for ten
+lines and a trillion.
 
 A click asks for the depth-N neighbourhood of one node: a breadth-first walk
-over children and parents to N-1 hops, each visited node one lookup, every
-node's line sent whole so the view can draw stubs for the neighbours it does
-not show. Memory is the visited table, bounded at `GC_VISIT_MAX` (16384)
-nodes; past it the walk stops and says so on stderr.
+over children and parents to N-1 hops, each visited node one lookup (two
+with a parents file), every node's line sent whole so the view can draw
+stubs for the neighbours it does not show. Memory is the visited table,
+bounded at `GC_VISIT_MAX` (16384) nodes; past it the walk stops and ends the
+response with a `#cut 16384` line, which the page reports.
 
 Locality is what makes this fast rather than merely possible. Ids near each
 other in value are near each other in the file, and a node's neighbours in
@@ -52,19 +54,38 @@ The file must be sorted numerically by id; an unsorted file is refused by
 id order (as `util/mkgraph` does, and as any id-assigning writer can) needs
 no sort.
 
-## Parents
+## From an edge list
 
-Parents can live on the line (the 1999 server wrote them there) or in a
-second file beside the graph, `FILE.parents`, one `child;parent` per line
-sorted by child, built from the graph itself:
+Most graphs arrive as one edge per line, `src dst` (SNAP, Common Crawl, a
+citation dump). Two external sorts make the file and its parents:
 
+    sort -k1,1n -k2,2n -u EDGES | graphcrawl --group > FILE
     graphcrawl --reverse FILE | sort -t';' -k1,1n -k2,2n -u > FILE.parents
 
-`--reverse` streams the file and prints every child edge reversed; `sort`
-does the external sort. A node's parents are the union of its line's field
-and the side file's rows, found by the same binary search. Keeping parents
-out of the main file lets the main file stay an adjacency list that is cheap
-to write and cheap to regenerate the reverse of.
+`--group` streams the sorted edges and writes one `src;;;;dst,dst;` line per
+source, dropping repeated targets; the separator may be blank, tab, `,`,
+`;` or `|`. A node that is only ever a target has no line of its own; it is
+still a node, found through the parents file and returned with parents
+only, so the crawl can enter it. Labels are not in an edge list; a label
+file is a future addition (the paper's notes).
+
+## Parents
+
+Parents can live on the line (the 1999 server wrote them there) or in
+`FILE.parents` beside the graph, one `child;parent` per line sorted by
+child, built by the `--reverse` line above. A node's parents are the union
+of its line's field and the side file's rows, found by the same binary
+search. Keeping parents out of the main file lets the main file stay an
+adjacency list that is cheap to write and cheap to regenerate the reverse
+of.
+
+## Label search
+
+`--find TEXT` and `/api/find?q=TEXT` stream the file and return the first
+50 nodes whose label holds TEXT, case-insensitively. A full scan: on the
+ten-million-node example it is a second or two; on a terabyte it is a
+terabyte. A sorted label file with its own binary search is the scalable
+form, not yet built.
 
 ## Sharding, discussed
 
@@ -84,12 +105,14 @@ what the viewer needs.
 
 | limit | value | holds |
 | --- | --- | --- |
-| `GC_LINE_MAX` | 65536 | one line |
-| `GC_FANOUT_MAX` | 4096 | ids kept from one list |
+| `GC_LINE_MAX` | 262144 | one line |
+| `GC_FANOUT_MAX` | 16384 | ids kept from one list |
 | `GC_VISIT_MAX` | 16384 | nodes in one neighbourhood |
 | `GC_DEPTH_MAX` | 8 | view depth the server expands |
+| `GC_FIND_MAX` | 50 | matches a label search returns |
 | `GC_LABEL_MAX` | 1024 | label |
 | `GC_URL_MAX` | 2048 | url |
 
-A neighbourhood walk holds one parsed line (about 68 KB), the visited table
-(about 270 KB) and one line buffer: under half a megabyte of stack.
+A neighbourhood walk holds its visited table (about 270 KB), one parsed
+line (about 260 KB) and, inside the lookup, a line buffer and the parents
+buffer (about 400 KB): under a megabyte of stack.

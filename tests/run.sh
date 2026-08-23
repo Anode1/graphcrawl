@@ -32,12 +32,12 @@ ok "info: last"                      "last=4999" "$("$GC" --info "$T/g.txt")"
 # --- the neighbourhood: depth 1 is the node, depth 2 its children and parents
 eq "node depth 1 is one line"        "1" "$("$GC" --node 100 -d 1 "$T/g.txt" | wc -l | tr -d ' ')"
 N2=$("$GC" --node 100 -d 2 "$T/g.txt")
-ok "node depth 2 leads with the node" "100;node 100;" "$(echo "$N2" | head -1)"
+ok "node depth 2 leads with the node" "100;node 100 " "$(echo "$N2" | head -1)"
 L=$(grep '^100;' "$T/g.txt"); LISTS=$(echo "$L" | cut -d';' -f5,6 | tr ';,' '  ')
 want=1; for id in $LISTS; do want=$((want+1)); done
 eq "node depth 2 has the node plus every neighbour" "$want" "$(echo "$N2" | wc -l | tr -d ' ')"
 eq "node: an absent id fails"        "1" "$("$GC" --node 999999 "$T/g.txt" >/dev/null 2>&1; echo $?)"
-eq "node: the first id works"        "0;node 0;" "$("$GC" --node 0 -d 1 "$T/g.txt" | cut -c1-9)"
+eq "node: the first id works"        "0;node 0 " "$("$GC" --node 0 -d 1 "$T/g.txt" | cut -c1-9)"
 eq "node: the last id works"         "4999;" "$("$GC" --node 4999 -d 1 "$T/g.txt" | cut -c1-5)"
 
 # --- the parents side-file built by --reverse + sort, read back into the lines
@@ -61,6 +61,26 @@ printf '1;a\n3;b\n2;c\n' > "$T/bad.txt"
 eq "check refuses an unsorted file"  "1" "$("$GC" --check "$T/bad.txt" >/dev/null 2>&1; echo $?)"
 ok "check names the line"            "line 3" "$("$GC" --check "$T/bad.txt" 2>&1)"
 
+# --- an edge list becomes a graph: group, reverse, and a target-only node crawls
+printf '1 2\n1 3\n2 3\n7 1\n' | sort -k1,1n -k2,2n | "$GC" --group > "$T/eg.txt"
+eq "group: node lines"               "1;;;;2,3;" "$(head -1 "$T/eg.txt")"
+"$GC" --reverse "$T/eg.txt" | sort -t';' -k1,1n -k2,2n -u > "$T/eg.txt.parents"
+eq "target-only node has its parents" "3;;;;;1,2" "$("$GC" --node 3 -d 1 "$T/eg.txt")"
+eq "group refuses unsorted input"    "1" "$(printf '2 1\n1 2\n' | "$GC" --group >/dev/null 2>&1; echo $?)"
+
+# --- label search
+ok "find is a substring, any case"   ";node 16 quartz;" "$("$GC" --find QUARTZ "$T/g.txt" | head -1)"
+eq "find caps at 50"                 "50" "$("$GC" --find node "$T/g.txt" | wc -l | tr -d ' ')"
+eq "find of nothing is empty"        "" "$("$GC" --find zzzz "$T/g.txt")"
+
+# --- a hub graph: the probe count per click stays near log2(n)
+"$MK" -n 50000 -H 200 -l 20 -s 3 > "$T/h.txt"
+ok "hub graph checks"                "sorted" "$("$GC" --check "$T/h.txt")"
+P=$("$GC" -D --node 25000 -d 3 "$T/h.txt" 2>&1 >/dev/null | sed -n 's/.*nodes, \([0-9]*\) lines.*/\1/p')
+N=$("$GC" --node 25000 -d 3 "$T/h.txt" | wc -l | tr -d ' ')
+if [ "$P" -gt 0 ] && [ "$P" -le $((N * 40)) ]; then pass=$((pass+1)); echo "  ok   probes per node under 40 ($P for $N)";
+else fail=$((fail+1)); echo "  FAIL probes $P for $N nodes"; fi
+
 # --- HTTP
 command -v curl >/dev/null 2>&1 || { echo "  SKIP http (no curl)"; echo "passed $pass, failed $fail"; [ $fail -eq 0 ] && exit 77 || exit 1; }
 GRAPHCRAWL_NO_OPEN=1 "$GC" -p "$PORT" "$T/g.txt" >/dev/null 2>&1 &
@@ -74,8 +94,11 @@ ok "GET /demo.html"                  "line_15" "$(curl -s "$B/demo.html")"
 eq "GET /minus.gif is a GIF"         "GIF89a" "$(curl -s "$B/minus.gif" | head -c 6)"
 ok "GET /api/info"                   "last=4999" "$(curl -s "$B/api/info")"
 eq "GET /api/node matches the CLI"   "$N2" "$(curl -s "$B/api/node?keywordid=100&depth=2")"
-ok "GET /api/node accepts id="       "100;node 100;" "$(curl -s "$B/api/node?id=100")"
+ok "GET /api/node accepts id="       "100;node 100 " "$(curl -s "$B/api/node?id=100")"
 ok "GET /api/node of an absent id is empty" "" "$(curl -s "$B/api/node?keywordid=999999")"
+ok "GET /api/find"                   "quartz" "$(curl -s "$B/api/find?q=quartz" | head -1)"
+eq "GET /api/find without q is 404"  "404" "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/find")"
+ok "GET / has the go-to box"         'id="goto"' "$(curl -s "$B/")"
 eq "GET /api/node without an id is 404" "404" "$(curl -s -o /dev/null -w '%{http_code}' "$B/api/node")"
 eq "GET of a missing asset is 404"   "404" "$(curl -s -o /dev/null -w '%{http_code}' "$B/nothing.js")"
 eq "GET ../ is refused"              "404" "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is "$B/../etc/passwd")"

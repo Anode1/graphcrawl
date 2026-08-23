@@ -217,6 +217,75 @@ int main(void)
         gc_close(&g);
     }
 
+    /* a node that exists only as an edge target comes back with its parents */
+    write_file(gpath, "1;;;;2,3;\n2;;;;3;\n");
+    write_file(ppath, "2;1\n3;1\n3;2\n");
+    CHECK(gc_open(&g, gpath) == 0);
+    CHECK(gc_node(&g, 3, &l) == 1 && l.nparents == 2 && l.nchildren == 0 && l.label[0] == '\0');
+    CHECK(gc_node(&g, 4, &l) == 0);
+    {
+        struct collect c = { {0}, 0 };
+        int cut;
+        CHECK(gc_neighbourhood(&g, 3, 2, collect_cb, &c, &cut) == 3);
+    }
+    gc_close(&g);
+
+    /* search: case-insensitive substring on the label, capped */
+    write_file(gpath, "1;Alder tree;;;;\n2;basalt;;;;\n3;alder again;;;;\n4;Alder;;;;\n");
+    unlink(ppath);
+    CHECK(gc_open(&g, gpath) == 0);
+    {
+        struct collect c = { {0}, 0 };
+        CHECK(gc_search(&g, "ALDER", 50, collect_cb, &c) == 3 && c.ids[2] == 4);
+        c.n = 0;
+        CHECK(gc_search(&g, "alder", 2, collect_cb, &c) == 2);
+        c.n = 0;
+        CHECK(gc_search(&g, "zzz", 50, collect_cb, &c) == 0);
+    }
+    gc_close(&g);
+
+    /* group: a sorted edge list becomes node lines, repeats dropped */
+    {
+        char epath[256], opath[256];
+        FILE *in, *out;
+        snprintf(epath, sizeof epath, "%s/e.txt", dir);
+        snprintf(opath, sizeof opath, "%s/o.txt", dir);
+        write_file(epath, "# edges\n1 2\n1\t3\n1,3\n2;3\n5|1\n");
+        in = fopen(epath, "r"); out = fopen(opath, "w");
+        CHECK(gc_group(in, out, stderr) == 0);
+        fclose(in); fclose(out);
+        out = fopen(opath, "r");
+        CHECK(fgets(buf, sizeof buf, out) != NULL && strcmp(buf, "1;;;;2,3;\n") == 0);
+        CHECK(fgets(buf, sizeof buf, out) != NULL && strcmp(buf, "2;;;;3;\n") == 0);
+        CHECK(fgets(buf, sizeof buf, out) != NULL && strcmp(buf, "5;;;;1;\n") == 0);
+        CHECK(fgets(buf, sizeof buf, out) == NULL);
+        fclose(out);
+        /* an unsorted edge list is refused */
+        write_file(epath, "2 1\n1 2\n");
+        in = fopen(epath, "r"); out = fopen(opath, "w");
+        {
+            FILE *null = fopen("/dev/null", "w");
+            CHECK(gc_group(in, out, null) == -1);
+            fclose(null);
+        }
+        fclose(in); fclose(out);
+        unlink(epath); unlink(opath);
+    }
+
+    /* probes: a lookup on 20000 lines reads about log2 of them */
+    {
+        FILE *f = fopen(gpath, "w");
+        long long i, before;
+        for (i = 0; i < 20000; i++)
+            fprintf(f, "%lld;n;;;;\n", i);
+        fclose(f);
+        CHECK(gc_open(&g, gpath) == 0);
+        before = gc_probes();
+        CHECK(gc_find(&g, 12345, buf, sizeof buf) == 1);
+        CHECK(gc_probes() - before >= 10 && gc_probes() - before <= 20);
+        gc_close(&g);
+    }
+
     unlink(gpath);
     unlink(ppath);
     rmdir(dir);

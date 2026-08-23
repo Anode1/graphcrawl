@@ -11,6 +11,13 @@
 #include "line.h"
 #include "log.h"
 
+static long probes;
+
+long gc_probes(void)
+{
+    return probes;
+}
+
 static off_t file_size(FILE *fp)
 {
     struct stat st;
@@ -151,6 +158,7 @@ static long lower_bound(FILE *fp, off_t size, long long id, char *buf,
             continue;
         }
         n = node_line_from(fp, st, hi, buf, sz, &here, &lid);
+        probes++;
         if (n < 0)
             return -1;
         if (n == 0) {
@@ -216,11 +224,22 @@ int gc_node(struct gc_graph *g, long long id, struct gc_line *l)
     int r = gc_find(g, id, buf, sizeof buf);
     int n, i;
 
-    if (r != 1)
+    if (r < 0)
         return r;
-    if (gc_line_parse(buf, l) != 0)
-        return 0;
+    if (r == 1) {
+        if (gc_line_parse(buf, l) != 0)
+            return 0;
+    } else {
+        /* no line of its own: a node only ever named as an edge's target */
+        l->id = id;
+        l->label[0] = l->category[0] = l->url[0] = '\0';
+        l->nchildren = l->nparents = l->cut = 0;
+        if (g->pfp == NULL)
+            return 0;
+    }
     n = gc_parents(g, id, extra, GC_FANOUT_MAX);
+    if (r == 0 && n == 0)
+        return 0;
     for (i = 0; i < n; i++) {
         if (has_id(l->parents, l->nparents, extra[i]))
             continue;
@@ -402,4 +421,103 @@ int gc_reverse(struct gc_graph *g, FILE *out)
             fprintf(out, "%lld;%lld\n", l.children[i], l.id);
     }
     return ferror(g->fp) || ferror(out) ? -1 : 0;
+}
+
+/* lowercase ASCII substring test */
+static int has_text(const char *hay, const char *needle)
+{
+    size_t nl = strlen(needle);
+    const char *p;
+
+    if (nl == 0)
+        return 1;
+    for (p = hay; *p != '\0'; p++) {
+        size_t i;
+        for (i = 0; i < nl; i++) {
+            unsigned char a = (unsigned char)p[i], b = (unsigned char)needle[i];
+            if (a >= 'A' && a <= 'Z') a = (unsigned char)(a + 32);
+            if (b >= 'A' && b <= 'Z') b = (unsigned char)(b + 32);
+            if (a != b)
+                break;
+        }
+        if (i == nl)
+            return 1;
+        if (p[i] == '\0')
+            return 0;
+    }
+    return 0;
+}
+
+int gc_search(struct gc_graph *g, const char *text, int max,
+              gc_emit_fn emit, void *ctx)
+{
+    char buf[GC_LINE_MAX];
+    struct gc_line l;
+    int count = 0;
+
+    rewind(g->fp);
+    while (count < max && fgets(buf, sizeof buf, g->fp) != NULL) {
+        if (gc_line_parse(buf, &l) != 0)
+            continue;
+        if (!has_text(l.label, text))
+            continue;
+        if (emit(&l, ctx) != 0)
+            break;
+        count++;
+    }
+    return count;
+}
+
+int gc_group(FILE *in, FILE *out, FILE *report)
+{
+    char buf[GC_LINE_MAX];
+    long long cur = 0, last_dst = 0, lineno = 0;
+    int open = 0, first = 1;
+
+    while (fgets(buf, sizeof buf, in) != NULL) {
+        const char *p = buf;
+        char *end;
+        long long src, dst;
+
+        lineno++;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (*p == '\0' || *p == '\n' || *p == '\r' || *p == '#')
+            continue;
+        src = strtoll(p, &end, 10);
+        if (end == p) {
+            fprintf(report, "line %lld: no source id\n", lineno);
+            return -1;
+        }
+        p = end;
+        while (*p == ' ' || *p == '\t' || *p == ',' || *p == ';' || *p == '|')
+            p++;
+        dst = strtoll(p, &end, 10);
+        if (end == p) {
+            fprintf(report, "line %lld: no target id\n", lineno);
+            return -1;
+        }
+        if (!open || src != cur) {
+            if (open && src < cur) {
+                fputs(";\n", out);
+                fprintf(report, "line %lld: source %lld after %lld, not sorted\n",
+                        lineno, src, cur);
+                return -1;
+            }
+            if (open)
+                fputs(";\n", out);
+            fprintf(out, "%lld;;;;", src);
+            cur = src;
+            open = 1;
+            first = 1;
+        } else if (dst == last_dst) {
+            continue;
+        }
+        fprintf(out, first ? "%lld" : ",%lld", dst);
+        first = 0;
+        last_dst = dst;
+    }
+    if (open)
+        fputs(";\n", out);
+    return ferror(in) || ferror(out) ? -1 : 0;
 }

@@ -15,3 +15,7 @@ body { display: flex; }
 #status { flex: 0 0 auto; min-height: 1.2em; padding: 2px 5px; background: #c0c0c0;
   border-top: 1px solid #808080; }
 iframe[name=content] { flex: 1 1 auto; border: 0; min-width: 0; }
+#tools input { font: inherit; }
+#results { flex: 0 0 auto; max-height: 8em; overflow-y: auto; margin: 0; padding: 2px 5px 2px 20px;
+  background: #ffffff; border-top: 1px solid #808080; }
+#results a { color: #0000ff; }

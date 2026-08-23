@@ -4,6 +4,9 @@
  *   GET /api/node?keywordid=ID&depth=D   the neighbourhood, one line per node
  *                                        (the 1999 child.cgi contract; `id=`
  *                                        is accepted for keywordid)
+ *                                        a cut walk ends with a "#cut N" line
+ *   GET /api/find?q=TEXT                 nodes whose label holds TEXT, up to
+ *                                        GC_FIND_MAX lines (a full scan)
  *   GET /api/info                        key=value lines: file, size, first,
  *                                        last, parents
  *

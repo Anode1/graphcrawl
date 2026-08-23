@@ -28,6 +28,9 @@ struct gc_graph {
 int gc_open(struct gc_graph *g, const char *path);
 void gc_close(struct gc_graph *g);
 
+/* A node handed to a caller's sink; a non-zero return stops the walk. */
+typedef int (*gc_emit_fn)(const struct gc_line *l, void *ctx);
+
 /* The line of node ID into BUF. 1 found, 0 absent, -1 read error. */
 int gc_find(struct gc_graph *g, long long id, char *buf, size_t sz);
 
@@ -35,13 +38,31 @@ int gc_find(struct gc_graph *g, long long id, char *buf, size_t sz);
  * there is no parents file. */
 int gc_parents(struct gc_graph *g, long long id, long long *out, int max);
 
-/* Node ID parsed, with FILE.parents merged in. 1 found, 0 absent, -1 error. */
+/* Node ID parsed, with FILE.parents merged in. An id that has no line but
+ * has rows in FILE.parents is a node too (an edge-list target): it comes
+ * back with parents only. 1 found, 0 absent, -1 error. */
 int gc_node(struct gc_graph *g, long long id, struct gc_line *l);
+
+/* Lines read by the binary searches so far, for measuring the cost of a
+ * click: about log2(lines) per lookup. */
+long gc_probes(void);
+
+/* Stream the file and hand EMIT every node whose label holds TEXT, case
+ * insensitively, up to MAX of them. Returns the count. A full scan: the
+ * cost is the file's size. */
+int gc_search(struct gc_graph *g, const char *text, int max,
+              gc_emit_fn emit, void *ctx);
+
+/* Group a sorted edge list into node lines: IN holds "src dst" lines (the
+ * separator any of blank, ',', ';', '|'), sorted by src then dst; OUT gets
+ * one "src;;;;dst,dst,...;" per source, repeats of a dst dropped. Streams
+ * with no memory of the graph. 0 ok; -1 and a message on REPORT for a
+ * non-numeric or out-of-order line. */
+int gc_group(FILE *in, FILE *out, FILE *report);
 
 /* Every node within DEPTH-1 hops of ID over children and parents, breadth
  * first, ID first, each handed to EMIT. Returns the count, -1 if ID is
  * absent. A frontier past GC_VISIT_MAX nodes is cut, and *CUT says so. */
-typedef int (*gc_emit_fn)(const struct gc_line *l, void *ctx);
 int gc_neighbourhood(struct gc_graph *g, long long id, int depth,
                      gc_emit_fn emit, void *ctx, int *cut);
 

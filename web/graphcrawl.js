@@ -32,11 +32,11 @@ class Rect {
  * pixel conventions (a drawRect outlines w+1 x h+1 pixels; a line is one
  * pixel wide on pixel centres). Font metrics mimic Dialog 12 plain. */
 class Graphics {
-  constructor(ctx) {
+  constructor(ctx, scale) {
     this.ctx = ctx;
     ctx.font = '12px sans-serif';
     ctx.textBaseline = 'alphabetic';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / (scale || 1);
     this.fm = { height: 15, descent: 3, stringWidth: (s) => Math.ceil(ctx.measureText(s).width) };
     this.setColor(Color.black);
   }
@@ -326,13 +326,22 @@ class NodeView extends Sprite {
     this.fm = null;
     this.highlighted = false;
     this.terminal = true;
+    this.setNodeModel(nodeModel);
+  }
+  /* the label, the icon or the shape from the model; a fresh model from a
+   * later response replaces a stub made from an id alone */
+  setNodeModel(nodeModel) {
+    this.nodeModel = nodeModel;
     const label = nodeModel.label;
     this.shortLabel = label.length > NodeView.labelViewLength
       ? label.substring(0, NodeView.labelViewLength - 4) + '...' : label;
+    this.fm = null;
+    this.wrappedLabel = null;
     const categories = Categories.getInstance();
     const iconImage = categories.getImageForCategory(nodeModel.category);
     if (iconImage == null) {
-      if (categories.isInOvalRange(nodeModel.id)) this.type = Sprite.OVAL;
+      this.image = null; this.grayedImage = null;
+      this.type = categories.isInOvalRange(nodeModel.id) ? Sprite.OVAL : Sprite.RECTANGLE;
     } else {
       this.setImage(iconImage);
     }
@@ -624,6 +633,7 @@ class Parser {
   parseLine(line) {
     try {
       this.currentLine++;
+      if (line.charAt(0) === '#') return;
       const children = [], parents = [];
       let i = line.indexOf(';');
       if (i < 0) throw new Error('no id separator');
@@ -717,8 +727,15 @@ class InfoRequest {
       const r = await fetch(url, { cache: 'no-store', signal: this.abort.signal });
       const text = await r.text();
       const parser = new Parser();
-      for (const line of text.split('\n')) if (line.length > 0) parser.parseLine(line.replace(/\r$/, ''));
-      if (this.alive) this.applet.setGraphModel(parser.getGraphModel());
+      let cut = 0;
+      for (const raw of text.split('\n')) {
+        const line = raw.replace(/\r$/, '');
+        if (line.length === 0) continue;
+        const m = /^#cut (\d+)/.exec(line);
+        if (m) { cut = parseInt(m[1], 10); continue; }
+        parser.parseLine(line);
+      }
+      if (this.alive) { this.applet.setGraphModel(parser.getGraphModel()); this.applet.lastCut = cut; }
     } catch (e) {
       if (this.alive) console.log('InfoRequestThread::getFromCGI:Error during http request:' + e);
     }
@@ -766,7 +783,7 @@ class GraphView {
     this.motor = new Motor(this);
     this.centralNode = null;
     this.longLabeledNodeView = null;
-    this.depth = 2;
+    this.depth = parseInt(applet.getParameter('depth') || '2', 10);
     this.CHILD_EDGE_LENGTH = 120;
     this.ELLIPSOIDALITY = 2;
     this.PARENT_EDGE_LENGTH = 120;
@@ -778,6 +795,18 @@ class GraphView {
     this.deltaBetweenClicks = 300;
     this.animation = new Animation(this, applet);
     this.cssWidth = 1; this.cssHeight = 1;
+    /* the world is the canvas divided by the zoom: nodes keep 1999 geometry
+     * and the view shrinks to hold a deep neighbourhood (doc/PORT.md) */
+    this.scale = 1;
+    this.fitOnExpand = applet.getParameter('fit') !== 'false';
+    this.fanoutMax = parseInt(applet.getParameter('fanout_max') || '60', 10);
+    this.stubsMax = parseInt(applet.getParameter('stubs_max') || '24', 10);
+    this.terminalCrawl = applet.getParameter('terminal_crawl') !== 'false';
+    /* pixels of arc per neighbour: the circle grows with the count; 0 keeps
+     * the fixed 120 px of 1999 */
+    this.spread = parseInt(applet.getParameter('spread') || '40', 10);
+    this.panStart = null;
+    this.expandStatus = '';
     this.fit();
     this.bindMouse();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { this.fit(); this.repaint(); }).observe(canvas);
@@ -793,8 +822,38 @@ class GraphView {
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     this.dpr = dpr;
   }
-  size() { return { width: this.cssWidth, height: this.cssHeight }; }
+  size() { return { width: Math.trunc(this.cssWidth / this.scale), height: Math.trunc(this.cssHeight / this.scale) }; }
   bounds() { return this.size(); }
+  /* zoom about the centre: the world box changes, the nodes follow its centre */
+  setZoom(s) {
+    s = Math.max(0.05, Math.min(4, s));
+    const oc = this.getCenter();
+    this.scale = s;
+    const nc = this.getCenter();
+    this.translate(nc.x - oc.x, nc.y - oc.y);
+    for (const n of this.nodes.elements()) n.resetWrappedLabel();
+    this.repaint();
+  }
+  /* zoom out until every node is inside the canvas, never past 1 */
+  fitView() {
+    const c = this.getCenter();
+    let ex = 1, ey = 1;
+    for (const n of this.nodes.elements()) {
+      ex = Math.max(ex, Math.abs(n.getMiddleX() - c.x) + (n.width >> 1) + 50);   /* room for stubs */
+      ey = Math.max(ey, Math.abs(n.getMiddleY() - c.y) + n.height + 45);
+    }
+    const s = Math.min(1, (this.cssWidth / 2) / ex, (this.cssHeight / 2) / ey);
+    if (Math.abs(s - this.scale) > 0.01) this.setZoom(s);
+  }
+  /* what the expansion left off screen, for the status line */
+  countHidden() {
+    let hidden = 0;
+    for (const n of this.nodes.elements()) {
+      for (const id of n.nodeModel.children) if (this.getNode(id) == null) hidden++;
+      for (const id of n.nodeModel.parents) if (this.getNode(id) == null) hidden++;
+    }
+    return hidden;
+  }
   setInitNode(node) {
     this.centralNode = this.createNode(node);
     this.centralNode.setCenter(this.getCenterX(), this.getCenterY());
@@ -815,7 +874,7 @@ class GraphView {
       this.centralNode.setHighlighted(true);
       this.setState(GraphView.IDLE);
       this.applet.resetGraphModel(node.id, this.depth);
-    } else if (nodeView.isTerminal()) {         /* terminals only show their URL */
+    } else if (nodeView.isTerminal() && !this.terminalCrawl) {   /* 1999: terminals only show their URL */
       this.deselectAll();
       nodeView.setHighlighted(true);
     } else {
@@ -843,14 +902,20 @@ class GraphView {
     this.deselectAll();                         /* hack to walk around a deselection bug */
     nodeView.setHighlighted(true);
     this.motor.suspendThread();
+    this.paint();                               /* sizes every new node from its label, moves none */
+    if (this.fitOnExpand) this.fitView();
     this.repaint();
+    const shown = this.nodes.elements().length, hidden = this.countHidden();
+    this.expandStatus = shown + ' node' + (shown === 1 ? '' : 's') + ' shown, ' + hidden + ' neighbour' +
+      (hidden === 1 ? '' : 's') + ' hidden' + (this.applet.lastCut ? ', walk cut at ' + this.applet.lastCut + ' nodes' : '');
+    this.applet.showStatus(this.expandStatus);
   }
   expandCentral() { this.expandNode(this.centralNode); }
   doubleClickOnNode(shift, nodeView) {
     const nodeModel = nodeView.getNodeModel();
     this.deselectAll();
     nodeView.setHighlighted(true);
-    if (!nodeView.isTerminal()) this.selectNode(nodeModel);
+    if (!nodeView.isTerminal() || this.terminalCrawl) this.selectNode(nodeModel);
     else this.motor.suspendThread();
     if (!shift) this.applet.showUrl(nodeModel);
   }
@@ -896,23 +961,32 @@ class GraphView {
       if (numOfParents === 0) return;           /* a single node */
     }
     if (level === depth) return;                /* the boundary level */
+    /* at most fanoutMax of each list get a view, fewer the deeper the level;
+     * the rest stay hidden stubs */
+    const most = level === 1 ? this.fanoutMax : Math.max(6, Math.trunc(this.fanoutMax / (level * 2)));
+    const showP = Math.min(numOfParents, most), showC = Math.min(numOfChildren, most);
     let angleBetween;
-    if (level === 1) angleBetween = Math.trunc(360 / (numOfChildren + numOfParents));
-    else angleBetween = Math.trunc(this.SECTOR_FOR_NEIGHBOURS / (numOfChildren + numOfParents));
+    const sector = level === 1 ? 360 : this.SECTOR_FOR_NEIGHBOURS;
+    angleBetween = Math.trunc(sector / (showC + showP));
+    /* the radius that gives each neighbour `spread` pixels of arc */
+    let arc = Math.trunc((showC + showP) * this.spread * 360 / (sector * 2 * Math.PI));
+    if (level > 1) arc = Math.min(arc, 3 * this.CHILD_EDGE_LENGTH);    /* a sector, not a ring */
+    const parentLength = Math.max(this.PARENT_EDGE_LENGTH, arc);
+    const childLength = Math.max(this.CHILD_EDGE_LENGTH, arc);
     let n = 0;
-    for (; n < numOfParents; n++) {
+    for (; n < showP; n++) {
       const aParentId = parentsIds[n];
       let aParent = this.getNode(aParentId);
       if (aParent == null) {
-        aParent = this.createNeighbour(nodeView, aParentId, n, angleBetween, this.PARENT_EDGE_LENGTH);
+        aParent = this.createNeighbour(nodeView, aParentId, n, angleBetween, parentLength);
         this.addNode(aParentId, aParent);
       }
     }
-    for (let j = 0; j < numOfChildren; j++, n++) {
+    for (let j = 0; j < showC; j++, n++) {
       const aChildId = childrenIds[j];
       let aChild = this.getNode(aChildId);
       if (aChild == null) {
-        aChild = this.createNeighbour(nodeView, aChildId, n, angleBetween, this.CHILD_EDGE_LENGTH);
+        aChild = this.createNeighbour(nodeView, aChildId, n, angleBetween, childLength);
         this.addNode(aChildId, aChild);
       }
     }
@@ -974,8 +1048,8 @@ class GraphView {
   }
   paint() {
     const ctx = this.ctx, w = this.size().width, h = this.size().height;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    const g = new Graphics(ctx);
+    ctx.setTransform(this.dpr * this.scale, 0, 0, this.dpr * this.scale, 0, 0);
+    const g = new Graphics(ctx, this.scale);
     g.setColor(Color.white);
     g.fillRect(0, 0, w, h);
     g.setColor(Color.black);
@@ -1013,15 +1087,19 @@ class GraphView {
     if (!nodeView.equals(this.centralNode)) thisNodeAngle = Math.trunc(math.atan2(yDistance, xDistance)) + 90 - (angleRange >> 1);
     else angleRange = 360;
     const fromAngle = thisNodeAngle;
-    const angleBetween = Math.trunc(angleRange / numberOfHidden);
-    for (let i = 0; i < numberOfHidden; i++) {
+    const stubs = Math.min(numberOfHidden, this.stubsMax);     /* the rest is a count */
+    const angleBetween = Math.trunc(angleRange / stubs);
+    let lastX = 0, lastY = 0;
+    for (let i = 0; i < stubs; i++) {
       const angle = angleBetween * i + fromAngle;
       const dx = math.sin(angle);
       const nonExistingX = nodeView.getMiddleX() + Math.trunc((nodeView.width >> 1) * dx) + Math.trunc(edgeLength * dx);
       const nonExistingY = nodeView.getMiddleY() - Math.trunc(edgeLength * math.cos(angle));
       g.drawLine(nodeView.getMiddleX(), nodeView.getMiddleY(), nonExistingX, nonExistingY);
       g.fillOval(nonExistingX - 2, nonExistingY - 2, 4, 4);      /* bulbs at the ends */
+      lastX = nonExistingX; lastY = nonExistingY;
     }
+    if (numberOfHidden > stubs) g.drawString('+' + (numberOfHidden - stubs), lastX + 4, lastY + 4);
   }
   paintEdges(g) { for (const n of this.nodes.elements()) this.paintEdgesForNode(n, g); }
   paintNodes(g) { for (const n of this.nodes.elements()) n.paint(g); }
@@ -1030,8 +1108,12 @@ class GraphView {
     const c = this.canvas;
     const at = (e) => {
       const r = c.getBoundingClientRect();
-      return { x: Math.trunc(e.clientX - r.left), y: Math.trunc(e.clientY - r.top) };
+      return { x: Math.trunc((e.clientX - r.left) / this.scale), y: Math.trunc((e.clientY - r.top) / this.scale) };
     };
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.setZoom(this.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+    }, { passive: false });
     c.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -1041,7 +1123,11 @@ class GraphView {
     });
     c.addEventListener('pointermove', (e) => {
       const p = at(e);
-      if (this.getState() === GraphView.DRAG && (e.buttons & 1)) this.mouseDrag(e.shiftKey, p.x, p.y);
+      if (this.getState() === GraphView.PAN && (e.buttons & 1)) {
+        this.translate(p.x - this.panStart.x, p.y - this.panStart.y);
+        this.panStart = p;
+        this.repaint();
+      } else if (this.getState() === GraphView.DRAG && (e.buttons & 1)) this.mouseDrag(e.shiftKey, p.x, p.y);
       else this.mouseMove(e.shiftKey, p.x, p.y);
     });
     c.addEventListener('pointerup', (e) => { const p = at(e); this.mouseUp(e.shiftKey, p.x, p.y); });
@@ -1065,6 +1151,9 @@ class GraphView {
         this.draggedNode = nodeView;
         this.setState(GraphView.DRAG);
       }
+    } else if (this.getState() === GraphView.IDLE) {   /* empty space: pan the view */
+      this.panStart = { x: x, y: y };
+      this.setState(GraphView.PAN);
     }
     return true;
   }
@@ -1085,16 +1174,24 @@ class GraphView {
         if (this.longLabeledNodeView != null) this.longLabeledNodeView.setLongLabel(false);
         this.longLabeledNodeView = nodeView;
         this.longLabeledNodeView.setLongLabel(true);
+        const m = nodeView.nodeModel;
+        this.applet.showStatus(m.id + ': ' + m.label + ' (' + m.children.length + ' children, ' + m.parents.length + ' parents)');
         this.repaint();
       }
     } else if (this.longLabeledNodeView != null) {
       this.longLabeledNodeView.setLongLabel(false);
       this.longLabeledNodeView = null;
+      this.applet.showStatus(this.expandStatus);
       this.repaint();
     }
     return true;
   }
   mouseUp(shift, x, y) {
+    if (this.getState() === GraphView.PAN) {
+      this.panStart = null;
+      this.state = GraphView.IDLE;
+      return true;
+    }
     if (this.getState() === GraphView.DRAG) {
       this.draggedNode = null;
       this.state = GraphView.IDLE;
@@ -1118,18 +1215,37 @@ class GraphView {
 GraphView.IDLE = 1;
 GraphView.DRAG = 2;
 GraphView.ADVANCING = 3;
+GraphView.PAN = 4;
 
 /* ---- graph/ToolsPanel.java: Tree Depth and History choices ---- */
 class ToolsPanel {
-  constructor(applet, depthChoice, historyChoice) {
+  constructor(applet, depthChoice, historyChoice, root) {
     this.applet = applet;
     this.history = new History();
     this.depth_choice = depthChoice;
     this.history_choice = historyChoice;
+    const depthMax = parseInt(applet.getParameter('depth_max') || '6', 10);
+    depthChoice.textContent = '';
+    for (let d = 1; d <= depthMax; d++) {
+      const o = document.createElement('option');
+      o.textContent = String(d);
+      if (d === applet.getGraphView().getDepth()) o.selected = true;
+      depthChoice.appendChild(o);
+    }
     depthChoice.addEventListener('change', () => {
       const depth = parseInt(depthChoice.value, 10);
       if (!isNaN(depth)) applet.getGraphView().setDepth(depth);
     });
+    const goto = root.querySelector('#goto'), find = root.querySelector('#find');
+    const back = root.querySelector('#back'), results = root.querySelector('#results');
+    this.results = results;
+    if (goto) goto.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && goto.value.trim() !== '') applet.goTo(goto.value.trim());
+    });
+    if (find) find.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') applet.find(find.value.trim());
+    });
+    if (back) back.addEventListener('click', () => history.back());
     historyChoice.addEventListener('change', () => {
       const itemInChoice = historyChoice.value.trim();
       for (const key of this.history.keys()) {
@@ -1140,6 +1256,25 @@ class ToolsPanel {
         }
       }
     });
+  }
+  /* the label search's answers: one link each, to crawl to */
+  showResults(nodes) {
+    if (!this.results) return;
+    this.results.textContent = '';
+    if (nodes.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = 'nothing found';
+      this.results.appendChild(li);
+    }
+    for (const n of nodes) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#' + encodeURIComponent(n.id);
+      a.textContent = n.label === '' ? n.id : n.label + ' (' + n.id + ')';
+      li.appendChild(a);
+      this.results.appendChild(li);
+    }
+    this.results.hidden = false;
   }
   addHistoryNode(node) {
     if (this.history.getNode(node.getID()) != null) return;
@@ -1168,6 +1303,7 @@ class NavigatorApplet {
     this.communicationThread = null;
     this.initialized = false;
     this.images = new Map();
+    this.lastCut = 0;
   }
   getParameter(name) {
     const v = this.params[name];
@@ -1192,7 +1328,13 @@ class NavigatorApplet {
   async init() {
     this.graphModel = new GraphModel();
     this.graphView = new GraphView(this, this.graphModel, this.root.querySelector('#graph'));
-    this.toolsPanel = new ToolsPanel(this, this.root.querySelector('#depth'), this.root.querySelector('#history'));
+    this.toolsPanel = new ToolsPanel(this, this.root.querySelector('#depth'), this.root.querySelector('#history'), this.root);
+    /* back and forward walk the crawl: the hash is the node */
+    window.addEventListener('popstate', () => {
+      const id = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : null;
+      const c = this.graphView.getCentralNode();
+      if (id != null && (c == null || c.nodeModel.id !== id)) this.goTo(id);
+    });
     if (this.getParameter('line_0') != null) this.fromAppletParameters = true;
     const categories = new Categories(this);
     await categories.loadImages();
@@ -1209,6 +1351,8 @@ class NavigatorApplet {
   /* refill the cache from the server (or the parameters) */
   resetGraphModel(keywordid, depth) {
     if (this.staticApplet && this.graphModel != null && this.initialized) return;
+    if (keywordid != null && location.hash.slice(1) !== encodeURIComponent(keywordid))
+      history.pushState(null, '', '#' + encodeURIComponent(keywordid));
     this.setWaitingForServer(true);
     if (this.communicationThread != null) this.communicationThread.stop();
     this.communicationThread = new InfoRequest(this, keywordid, depth, this.fromAppletParameters);
@@ -1228,6 +1372,12 @@ class NavigatorApplet {
       }
       this.graphView.setInitNode(firstNode);
       this.initialized = true;
+    } else {
+      /* the centre may be a stub made from an id: take the node the server sent */
+      const c = this.graphView.getCentralNode();
+      const fresh = this.graphModel.getNode(c.nodeModel.id);
+      if (fresh != null) { if (fresh !== c.nodeModel) c.setNodeModel(fresh); }
+      else this.showStatus('no node ' + c.nodeModel.id + ' in the graph');
     }
     const wait = () => {
       if (this.graphView.getState() === GraphView.ADVANCING) setTimeout(wait, 100);
@@ -1242,6 +1392,29 @@ class NavigatorApplet {
   }
   getGraphView() { return this.graphView; }
   getGraphModel() { return this.graphModel; }
+  /* crawl to an id typed, searched or taken from the URL */
+  goTo(id) {
+    if (!this.initialized) { this.params.first_node = id; return; }
+    const node = this.graphModel.getNode(id) || new Node(id, 'id ' + id, '', '', [], []);
+    this.graphView.selectNode(node);
+  }
+  /* label search: /api/find on a server, the line_N parameters without one */
+  async find(text) {
+    if (text === '') { if (this.toolsPanel.results) this.toolsPanel.results.hidden = true; return; }
+    const parser = new Parser();
+    if (this.fromAppletParameters) {
+      for (let i = 0; this.getParameter('line_' + i) != null; i++) parser.parseLine(this.getParameter('line_' + i));
+    } else {
+      try {
+        const r = await fetch('/api/find?q=' + encodeURIComponent(text), { cache: 'no-store' });
+        for (const line of (await r.text()).split('\n')) if (line.length > 0) parser.parseLine(line.replace(/\r$/, ''));
+      } catch (e) { this.showStatus('find failed: ' + e); return; }
+    }
+    const lower = text.toLowerCase(), found = [];
+    for (const n of parser.getGraphModel().map.values())
+      if (n.label.toLowerCase().indexOf(lower) >= 0) found.push(n);
+    this.toolsPanel.showResults(found);
+  }
   /* show the node's URL in the "content" frame and put it into the history */
   showUrl(node) {
     this.toolsPanel.addHistoryNode(node);
@@ -1272,11 +1445,14 @@ class NavigatorApplet {
 window.addEventListener('DOMContentLoaded', async () => {
   const params = window.GRAPHCRAWL_PARAMS || {};
   if (location.hash.length > 1) params.first_node = decodeURIComponent(location.hash.slice(1));
-  if (params.first_node == null && params.cgi != null && params.line_0 == null) {
+  const q = new URLSearchParams(location.search);      /* ?depth=4 overrides the page */
+  if (q.get('depth')) params.depth = q.get('depth');
+  if (params.cgi != null && params.line_0 == null) {
     try {
       const t = await (await fetch('/api/info', { cache: 'no-store' })).text();
-      const m = /^first=(.*)$/m.exec(t);
-      if (m) params.first_node = m[1].trim();
+      const m = /^first=(.*)$/m.exec(t), f = /^file=(.*)$/m.exec(t);
+      if (m && params.first_node == null) params.first_node = m[1].trim();
+      if (f) document.title = 'graphcrawl: ' + f[1].trim().split('/').pop();
     } catch (e) { console.log('no /api/info: ' + e); }
   }
   const applet = new NavigatorApplet(params, document);
