@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>graphcrawl film</title>
+<link rel="stylesheet" href="graphcrawl.css">
+<style>#applet { flex: 0 0 100%; border-right: 0; }</style>
+
+<!-- The README's moving figure: a scripted crawl through the package
+     dependency graph (util/aptgraph.py), captured frame by frame at
+     successive virtual-time budgets by tests/film.sh. Served over the
+     embedded files with GRAPHCRAWL_WEB=tests. The timeline, in ms of
+     virtual time: 0 load at bash; 3000 hover coreutils; 4200 double-click
+     libc6, which glides to the centre while the server is asked (delay_ms
+     keeps the 1999 animation on screen); 8200 Alt+double-click a dependent
+     with a few neighbours to open it in place; 10300 hover it; 11300
+     double-click it: the second crawl. No content frame: the graph has the
+     width. -->
+<div id="applet">
+  <canvas id="graph"></canvas>
+  <div id="tools">
+    <label>Nodes <select id="limit"></select></label>
+    <label>Depth <select id="depth"></select></label>
+    <label>History <select id="history"></select></label>
+    <label>Go to id <input id="goto" size="8"></label>
+    <label>Find <input id="find" size="12" placeholder="label text"></label>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+window.GRAPHCRAWL_PARAMS = {
+  cgi: "/api/node", limit: "30", delay_ms: "900",
+  iconFromX: "30", iconFromY: "30",
+  number_of_frames_in_anim: "2", file_1: "server1.gif", file_2: "server2.gif"
+};
+/* the ids of the packages the film visits, from the label search */
+async function idOf(label) {
+  var t = await (await fetch('/api/find?q=' + encodeURIComponent(label), { cache: 'no-store' })).text();
+  for (var line of t.split('\n')) {
+    var f = line.split(';');
+    if (f[1] === label) return f[0];
+  }
+  return null;
+}
+window.GRAPHCRAWL_BEFORE = async function (params) {
+  params.first_node = await idOf('bash');
+};
+window.addEventListener('DOMContentLoaded', function () {
+  var at = function (ms, fn) { setTimeout(fn, ms); };
+  var dbl = function (gv, id, mod) {
+    var nv = gv.getNode(id);
+    if (!nv) return;
+    var x = nv.getMiddleX(), y = nv.getMiddleY();
+    gv.mouseMove(false, -1, -1);
+    gv.mouseDown(mod, x, y); gv.mouseUp(false, x, y);
+    gv.mouseDown(mod, x, y); gv.mouseUp(false, x, y);
+  };
+  var hover = function (gv, id) {
+    var nv = gv.getNode(id);
+    if (nv) gv.mouseMove(false, nv.getMiddleX(), nv.getMiddleY());
+  };
+  var ids = {};
+  at(1500, async function () { ids.coreutils = await idOf('coreutils'); ids.libc6 = await idOf('libc6'); });
+  at(3000, function () { hover(window.graphcrawl.getGraphView(), ids.coreutils); });
+  at(4200, function () { dbl(window.graphcrawl.getGraphView(), ids.libc6, {}); });
+  at(8200, function () {
+    var gv = window.graphcrawl.getGraphView();
+    /* a blue dependent of libc6 with a few neighbours beyond the view */
+    for (var n of gv.nodes.elements()) {
+      if (n === gv.getCentralNode() || n.isTerminal()) continue;
+      var m = n.nodeModel, hidden = 0;
+      for (var id of m.children.concat(m.parents)) if (gv.getNode(id) == null) hidden++;
+      if (hidden >= 3 && hidden <= 7) { ids.pick = m.id; break; }
+    }
+    if (ids.pick) dbl(gv, ids.pick, { alt: true });
+  });
+  at(10300, function () { hover(window.graphcrawl.getGraphView(), ids.pick); });
+  at(11300, function () { dbl(window.graphcrawl.getGraphView(), ids.pick, {}); });
+});
+</script>
+<script src="graphcrawl.js"></script>
+</html>

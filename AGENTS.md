@@ -22,7 +22,11 @@ files from disk for editing without a rebuild.
 Never open a window on the real display. Screenshots go through
 `tests/shot.sh` (headless Chrome); `tests/drive.html`, served with
 `GRAPHCRAWL_WEB=tests`, double-clicks and hovers by itself so a capture
-shows the crawl. Start the server with `GRAPHCRAWL_NO_OPEN=1`.
+shows the crawl. Start the server with `GRAPHCRAWL_NO_OPEN=1`. `make film`
+rebuilds `screenshots/crawl.gif` from `tests/film.html`, one headless frame
+per 100 ms of virtual time, over `example/packages.txt` (`make example`
+builds it from this machine's apt; the frames differ by machine, which is
+fine for a figure and why the gif is a committed fixture).
 
 Comments, the usage text and these documents are claims; when behaviour
 changes they change with it.

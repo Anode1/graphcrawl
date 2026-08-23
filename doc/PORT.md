@@ -84,6 +84,8 @@ behaviour as one of its values (the table at the end).
 | ends | | children or none | the colour now says whether the view is complete around a node: green when every neighbour is on screen, blue (cyan in 1999 paint) when crawling or expanding there shows more. In 1999 green meant "no children" |
 | expand in place | | absent | Alt or Ctrl with the double-click fetches that node's own neighbourhood (`depth=2`, the budget) and places it around the node, the centre unchanged; the view may then exceed the budget, and the status says so |
 | Go to id, Find, Back | | absent | the id box re-centres; Find asks `/api/find` (or searches the `line_N` parameters) and lists links; Back is the browser's |
+| `delay_ms` | 0 | 1000 in static mode | holds a server's answer back that long, to watch the "Connecting" animation (the film uses 900); static mode keeps its 1999 second by default |
+| `GRAPHCRAWL_BEFORE` | | absent | a page's own async function, run on the parameters before the applet starts (the film resolves `first_node` from a label) |
 | status line | | "Getting information from the server" only | nodes shown and neighbours beyond after an expansion, whether the budget cut the walk, or that the whole reachable graph is on screen; the node under the mouse with its counts |
 
 Placement is breadth first over the model (`expand`, `placeAround`): each

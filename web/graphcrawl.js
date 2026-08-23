@@ -752,7 +752,13 @@ class InfoRequest {
         this.applet.dataReady(this.parentID);
       }, delay);
     } else {
-      this.getFromCGI().then(() => { if (this.alive) this.applet.dataReady(this.parentID); });
+      /* delay_ms also holds a server's answer back, to watch the 1999 animation */
+      const delay = parseInt(this.applet.getParameter('delay_ms') || '0', 10);
+      this.getFromCGI().then(() => {
+        if (!this.alive) return;
+        if (delay > 0) setTimeout(() => { if (this.alive) this.applet.dataReady(this.parentID); }, delay);
+        else this.applet.dataReady(this.parentID);
+      });
     }
   }
   stop() {
@@ -883,16 +889,26 @@ class GraphView {
     for (const n of this.nodes.elements()) n.resetWrappedLabel();
     this.repaint();
   }
-  /* zoom out until every node is inside the canvas, never past 1 */
-  fitView() {
-    const c = this.getCenter();
-    let ex = 1, ey = 1;
+  /* the box around every node, with room for stubs and labels */
+  shownBox() {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     for (const n of this.nodes.elements()) {
-      ex = Math.max(ex, Math.abs(n.getMiddleX() - c.x) + (n.width >> 1) + 50);   /* room for stubs */
-      ey = Math.max(ey, Math.abs(n.getMiddleY() - c.y) + n.height + 45);
+      x1 = Math.min(x1, n.x - 50); x2 = Math.max(x2, n.x + n.width + 50);
+      y1 = Math.min(y1, n.y - 45); y2 = Math.max(y2, n.y + n.height + 45);
     }
-    const s = Math.min(1, (this.cssWidth / 2) / ex, (this.cssHeight / 2) / ey);
+    return { x1: x1, y1: y1, x2: x2, y2: y2 };
+  }
+  /* zoom out until the shown box fits the canvas, never past 1, then centre
+   * the box rather than the central node: an expansion to one side would
+   * otherwise leave the other side empty */
+  fitView() {
+    if (this.nodes.elements().length === 0) return;
+    let b = this.shownBox();
+    const s = Math.min(1, this.cssWidth / (b.x2 - b.x1), this.cssHeight / (b.y2 - b.y1));
     if (Math.abs(s - this.scale) > 0.01) this.setZoom(s);
+    b = this.shownBox();
+    const cc = this.getCenter();
+    this.translate(Math.trunc(cc.x - (b.x1 + b.x2) / 2), Math.trunc(cc.y - (b.y1 + b.y2) / 2));
   }
   /* what the expansion left off screen, for the status line */
   countHidden() {
@@ -1587,6 +1603,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (f) document.title = 'graphcrawl: ' + f[1].trim().split('/').pop();
     } catch (e) { console.log('no /api/info: ' + e); }
   }
+  if (typeof window.GRAPHCRAWL_BEFORE === 'function') await window.GRAPHCRAWL_BEFORE(params);   /* a page's own setup */
   const applet = new NavigatorApplet(params, document);
   window.graphcrawl = applet;
   await applet.init();

@@ -11,6 +11,10 @@ breadth-first walk of N-1 hops, and nothing of the graph is held in memory.
 Ten lines or a billion, the process is the same two megabytes.
 
 <p align="center">
+  <img src="screenshots/crawl.gif" width="80%" alt="a crawl through the package dependency graph: bash, then libc6 gliding to the centre with the connecting animation, then a dependent opened in place and crawled into">
+</p>
+<p align="center"><em>The package dependency graph of a Linux machine (85,108 packages, <code>util/aptgraph.py</code>): the thirty nearest to <code>bash</code>; a double-click on <code>libc6</code>, which glides to the centre while the server answers and comes back with thirty of its 40,000 dependents; one of them opened in place with Alt, then crawled into.</em></p>
+<p align="center">
   <img src="screenshots/hub.png" width="70%" alt="the 25 nodes nearest a hub of 394 children; the rest are stubs with a count">
 </p>
 <p align="center"><em>A budget of 25 around a hub with 394 children in a generated graph: the nearest 25 get a place, the rest are stubs and a count. Blue nodes have more beyond them, green ones are complete, the centre is amber.</em></p>
@@ -27,7 +31,14 @@ Ten lines or a billion, the process is the same two megabytes.
     ./util/mkgraph -n 10000000 -H 1000 -l 100 > ten.txt    # ten million nodes, hubs, long edges
     ./graphcrawl ten.txt
 
-`http://127.0.0.1:8090/#ID` starts at node ID; `?depth=4` sets the depth.
+A real graph, the packages apt knows on this machine with their Depends
+edges (85k nodes; `libc6` has 40k dependents):
+
+    make example                             # also a 100k-node synthetic graph
+    ./graphcrawl example/packages.txt
+
+`http://127.0.0.1:8090/#ID` starts at node ID; `?limit=50&depth=3` set the
+budget and the cap.
 `/demo.html` is the 1999 family demo with no server behind it. `--no-open`
 (or `GRAPHCRAWL_NO_OPEN=1`) keeps the browser closed; `-p PORT` moves the
 port.
@@ -132,9 +143,11 @@ properties on edges, editing, whole-graph overviews.
                 127.0.0.1), main.c, tests.c; web.c is generated from web/
     web/        index.html, demo.html, graphcrawl.js, graphcrawl.css, the 1999 gifs
     util/       mkgraph.c (a generator with locality, hubs, long edges),
-                evict.c (drop a file from the page cache, for cold timings)
+                evict.c (drop a file from the page cache, for cold timings),
+                aptgraph.py (the package dependency graph of this machine)
     tests/      run.sh (CLI + HTTP), scale.sh (cold and warm clicks at N nodes),
-                shot.sh (headless screenshot), drive.html (a scripted crawl)
+                shot.sh (headless screenshot), drive.html (a scripted crawl),
+                film.html + film.sh (the README's moving figure: make film)
     doc/        FORMAT.md, PORT.md
     example/    family.txt (the 1999 demo as a file)
     legacy/     the 1999 snapshots, screenshots, and Professor Even's lecture notes
