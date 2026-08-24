@@ -2,13 +2,11 @@
 
 **Crawl a graph of any size by double-clicking through it, seeing only the depth-N neighbourhood of one node at a time.**
 
-A 1999 Java 1.0 applet ported to the browser canvas, behaviour kept (the
-glide to the centre, the sector placement, the bulb stubs for hidden
-neighbours, the wrapped labels, the "Connecting to the server" animation),
-over a C backend that reads a plain-text graph file sorted by id. The file
-is the index: a node is found by binary search, its neighbourhood by a
-breadth-first walk of N-1 hops, and nothing of the graph is held in memory.
-Ten lines or a billion, the process is the same two megabytes.
+A 1999 Java applet ported to the browser canvas, over a C backend that
+reads a plain-text graph file sorted by id. The file is the index: a node
+is found by binary search, its neighbourhood by a breadth-first walk, and
+nothing of the graph is held in memory. Ten lines or a billion, the
+process is the same two megabytes.
 
 <p align="center">
   <img src="screenshots/crawl.gif" width="80%" alt="a crawl through the package dependency graph: bash, then libc6 gliding to the centre with the connecting animation, then a dependent opened in place and crawled into">
