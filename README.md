@@ -157,11 +157,12 @@ properties on edges, editing, whole-graph overviews.
 
 ## Lineage
 
-The neighbourhood-at-a-time idea comes from the advanced graph algorithms
-course of the late Professor Shimon Even (1935-2004), whose student the
-author was. The applet dates from November 1999 to January 2000
-(`legacy/README.md`). The C style and the sorted plain-text index follow
-[ais](https://github.com/Anode1/ais).
+The author took the graph algorithms course of the late Professor Shimon
+Even (1935-2004), and the sense of locality in a graph that this tool
+relies on dates from it; the course itself was dynamic programming, and
+the neighbourhood-at-a-time idea is the author's own. The applet dates from
+November 1999 to January 2000 (`legacy/README.md`). The C style and the
+sorted plain-text index follow [ais](https://github.com/Anode1/ais).
 
 ## License
 
